@@ -1,0 +1,13 @@
+# StackTacToe — Netlify (Repo-Root)
+# Build läuft im Ordner "web" (Next.js).
+
+[build]
+  base    = "web"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Next.js explizit mit Plugin — behebt 404 / "Page not found"
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
