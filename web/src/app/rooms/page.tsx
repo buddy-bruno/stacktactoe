@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PageShell } from '@/components/layout/PageShell';
@@ -10,7 +10,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 
-type Room = { id: string; name: string; invite_code: string | null; created_by: string | null };
+const VARIANTS = ['classic', 'schach', 'pool', 'blitz'] as const;
+const VARIANT_LABELS: Record<(typeof VARIANTS)[number], string> = {
+  classic: 'Classic',
+  schach: 'Schach',
+  pool: 'Pool',
+  blitz: 'Blitz',
+};
+
+type Room = {
+  id: string;
+  name: string;
+  invite_code: string | null;
+  created_by: string | null;
+  variant: string;
+  is_public?: boolean;
+  creator?: { display_name: string | null; username: string | null } | null;
+};
 
 function generateRoomCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -18,9 +34,11 @@ function generateRoomCode(): string {
 
 export default function RoomsPage() {
   const router = useRouter();
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [allRooms, setAllRooms] = useState<Room[]>([]);
+  const [myRoomIds, setMyRoomIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [createName, setCreateName] = useState('');
+  const [createVariant, setCreateVariant] = useState<(typeof VARIANTS)[number]>('classic');
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joining, setJoining] = useState(false);
@@ -41,17 +59,42 @@ export default function RoomsPage() {
     if (!userId) return;
     (async () => {
       const { data: members } = await supabase.from('room_members').select('room_id').eq('user_id', userId);
-      if (!members?.length) {
-        setRooms([]);
-        setLoading(false);
-        return;
-      }
-      const ids = members.map((m) => m.room_id);
-      const { data: roomList } = await supabase.from('rooms').select('id, name, invite_code, created_by').in('id', ids).order('name');
-      setRooms((roomList as Room[]) ?? []);
+      const memberIds = members?.map((m) => m.room_id) ?? [];
+
+      const orParts = ['is_public.eq.true'];
+      if (memberIds.length) orParts.push(`id.in.(${memberIds.join(',')})`);
+      const { data: roomList } = await supabase
+        .from('rooms')
+        .select('id, name, invite_code, created_by, variant, is_public, profiles(display_name, username)')
+        .or(orParts.join(','))
+        .order('variant')
+        .order('name');
+
+      const roomsWithCreator = (roomList ?? []).map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        name: r.name as string,
+        invite_code: r.invite_code as string | null,
+        created_by: r.created_by as string | null,
+        variant: (r.variant as string) || 'classic',
+        is_public: r.is_public as boolean | undefined,
+        creator: (r.profiles ?? r.creator) as Room['creator'],
+      }));
+      setAllRooms(roomsWithCreator);
+      setMyRoomIds(new Set(memberIds));
       setLoading(false);
     })();
   }, [userId]);
+
+  const myRooms = useMemo(() => allRooms.filter((r) => myRoomIds.has(r.id)), [allRooms, myRoomIds]);
+  const roomsByVariant = useMemo(() => {
+    const map: Record<string, Room[]> = { classic: [], schach: [], pool: [], blitz: [] };
+    for (const r of allRooms) {
+      const v = VARIANTS.includes(r.variant as (typeof VARIANTS)[number]) ? r.variant : 'classic';
+      if (!map[v]) map[v] = [];
+      map[v].push(r);
+    }
+    return map;
+  }, [allRooms]);
 
   async function createRoom() {
     setError('');
@@ -65,7 +108,11 @@ export default function RoomsPage() {
     setCreating(true);
     let code = generateRoomCode();
     for (let i = 0; i < 5; i++) {
-      const { data: room, error: err } = await supabase.from('rooms').insert({ name, created_by: user.id, invite_code: code }).select('id').single();
+      const { data: room, error: err } = await supabase
+        .from('rooms')
+        .insert({ name, created_by: user.id, invite_code: code, variant: createVariant })
+        .select('id')
+        .single();
       if (!err && room) {
         await supabase.from('room_members').insert({ room_id: room.id, user_id: user.id });
         setCreating(false);
@@ -109,6 +156,18 @@ export default function RoomsPage() {
     setJoining(false);
   }
 
+  async function joinPublicRoom(roomId: string) {
+    if (!userId) return;
+    setError('');
+    const { error: err } = await supabase.from('room_members').insert({ room_id: roomId, user_id: userId }).select().single();
+    if (err) {
+      if ((err as { code?: string }).code === '23505') router.push('/room/' + roomId);
+      else setError('Beitreten fehlgeschlagen.');
+    } else {
+      router.push('/room/' + roomId);
+    }
+  }
+
   if (!userId) {
     return (
       <PageShell backHref="/lobby" header={<AppHeader title="Räume" showRanking showAuth />}>
@@ -124,10 +183,58 @@ export default function RoomsPage() {
       <main className="flex-1 flex flex-col gap-6 py-8 pb-20 max-w-2xl mx-auto w-full px-4">
         <h1 className="font-display text-2xl font-bold text-game-text">Räume</h1>
 
+        {/* Räume nach Spielmodi */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Räume nach Spielmodus</CardTitle>
+            <CardDescription className="text-game-text-muted">Öffentliche Räume und deine Räume, gruppiert nach Modus.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-game-text-muted text-sm">Lade…</p>
+            ) : (
+              <div className="space-y-6">
+                {VARIANTS.map((variant) => {
+                  const list = roomsByVariant[variant] ?? [];
+                  if (list.length === 0) return null;
+                  return (
+                    <section key={variant}>
+                      <h3 className="text-sm font-semibold text-game-text-muted mb-2">{VARIANT_LABELS[variant]}</h3>
+                      <ul className="space-y-2">
+                        {list.map((r) => {
+                          const isMember = myRoomIds.has(r.id);
+                          const creatorName = r.creator?.display_name?.trim() || r.creator?.username || null;
+                          return (
+                            <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-game-border bg-game-bg-subtle/40 p-2">
+                              <span className="font-medium text-game-text flex-1 min-w-0 truncate">{r.name}</span>
+                              {creatorName && <span className="text-xs text-game-text-muted">@{r.creator?.username ?? creatorName}</span>}
+                              <span className="text-xs text-game-text-muted">{VARIANT_LABELS[r.variant as keyof typeof VARIANT_LABELS] ?? r.variant}</span>
+                              {isMember ? (
+                                <Link href={'/room/' + r.id}>
+                                  <Button variant="outline" size="sm" className="border-game-border text-game-text hover:bg-game-surface-hover">Öffnen</Button>
+                                </Link>
+                              ) : r.is_public ? (
+                                <Button size="sm" className="bg-game-accent/20 border-game-accent/30 text-game-accent hover:bg-game-accent/30" onClick={() => void joinPublicRoom(r.id)}>Beitreten</Button>
+                              ) : (
+                                <span className="text-xs text-game-text-muted">Per Code beitreten</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  );
+                })}
+                {allRooms.length === 0 && <p className="text-game-text-muted text-sm">Noch keine Räume sichtbar. Erstelle einen oder trete per Code bei.</p>}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-game-text">Raum erstellen</CardTitle>
-            <CardDescription className="text-game-text-muted">Erstelle einen neuen Raum und lade andere per Code ein.</CardDescription>
+            <CardDescription className="text-game-text-muted">Erstelle einen neuen Raum und wähle den Spielmodus.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <Input
@@ -136,6 +243,20 @@ export default function RoomsPage() {
               onChange={(e) => setCreateName(e.target.value)}
               className="bg-game-bg-subtle/40 border-game-border text-game-text"
             />
+            <div className="flex flex-wrap gap-2">
+              {VARIANTS.map((v) => (
+                <Button
+                  key={v}
+                  type="button"
+                  variant={createVariant === v ? 'default' : 'outline'}
+                  size="sm"
+                  className={createVariant === v ? 'bg-game-primary text-white' : 'border-game-border text-game-text'}
+                  onClick={() => setCreateVariant(v)}
+                >
+                  {VARIANT_LABELS[v]}
+                </Button>
+              ))}
+            </div>
             <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30" onClick={() => void createRoom()} disabled={creating}>
               {creating ? 'Erstelle…' : 'Raum erstellen'}
             </Button>
@@ -171,15 +292,16 @@ export default function RoomsPage() {
           <CardContent>
             {loading ? (
               <p className="text-game-text-muted text-sm">Lade…</p>
-            ) : rooms.length === 0 ? (
+            ) : myRooms.length === 0 ? (
               <p className="text-game-text-muted text-sm">Noch keine Räume. Erstelle einen oder trete per Code bei.</p>
             ) : (
               <ul className="space-y-2">
-                {rooms.map((r) => (
+                {myRooms.map((r) => (
                   <li key={r.id}>
                     <Link href={'/room/' + r.id}>
                       <Button variant="outline" className="w-full justify-start border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
-                        {r.name}
+                        <span className="flex-1 text-left truncate">{r.name}</span>
+                        <span className="text-xs text-game-text-muted shrink-0 ml-2">{VARIANT_LABELS[r.variant as keyof typeof VARIANT_LABELS] ?? r.variant}</span>
                       </Button>
                     </Link>
                   </li>

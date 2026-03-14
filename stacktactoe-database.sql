@@ -467,10 +467,13 @@ create table if not exists public.rooms (
   invite_code  text unique,
   max_members  int default 20,
   is_public    boolean default false,
+  variant      text not null default 'classic',
   created_at   timestamptz default now()
 );
+alter table public.rooms add column if not exists variant text not null default 'classic';
 create index if not exists idx_rooms_created_by on public.rooms(created_by);
 create index if not exists idx_rooms_invite_code on public.rooms(invite_code);
+create index if not exists idx_rooms_variant on public.rooms(variant);
 
 create table if not exists public.room_members (
   room_id   uuid references public.rooms(id) on delete cascade not null,

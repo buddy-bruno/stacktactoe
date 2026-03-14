@@ -115,6 +115,10 @@ export function NavSidebar({ open, onClose }: NavSidebarProps) {
               <span className="text-lg shrink-0" aria-hidden>🎮</span>
               <span>Jetzt spielen</span>
             </Link>
+            <Link href="/rooms" onClick={handleLink} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-game-text hover:bg-game-surface-hover hover:text-game-primary transition-colors">
+              <span className="text-lg shrink-0" aria-hidden>🚪</span>
+              <span>Räume</span>
+            </Link>
             <Link href="/ranking" onClick={handleLink} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-game-text hover:bg-game-surface-hover hover:text-game-primary transition-colors">
               <span className="text-lg shrink-0" aria-hidden>🏆</span>
               <span>Rangliste</span>

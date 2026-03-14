@@ -416,14 +416,16 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Spielbrett & Dock: Touch für alle Geräte (iOS, Android, Xiaomi/Redmi, Edge, Safari) */
+/* Spielbrett & Dock: Touch für alle Geräte (iOS, Android, Xiaomi/Redmi, Edge, Safari).
+   touch-action: none verhindert, dass der Browser den ersten Touch als Scroll/Geste übernimmt,
+   sodass Ziehen mit dem Finger zuverlässig funktioniert (v. a. Redmi/MIUI/Chrome Android). */
 .game-board-frame,
 .game-board-frame .cell,
 .dock-slot,
 .piece-dock .dock-slot,
 .mobile-dock,
 .mobile-dock .dock-slot {
-  touch-action: manipulation;
+  touch-action: none;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   user-select: none;

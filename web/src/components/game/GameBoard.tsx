@@ -77,11 +77,22 @@ interface GameBoardProps {
   poolMode?: boolean;
 }
 
-/** Erkennt zur Laufzeit, ob Pointer Events unterstützt werden (iOS <13, alte Android nutzen Touch-Fallback). */
+/**
+ * Erkennt zur Laufzeit, ob Pointer Events für die Eingabe genutzt werden sollen.
+ * - Ältere Browser ohne PointerEvent → Touch/Mouse-Fallback.
+ * - Touch-Geräte (z. B. Xiaomi Redmi, MIUI, Chrome Android): Pointer Events werden dort oft
+ *   durch pointercancel/setPointerCapture-Probleme unterbrochen → bewusst Touch-Fallback
+ *   nutzen, damit Ziehen mit dem Finger zuverlässig funktioniert.
+ */
 function usePointerEventsSupported(): boolean {
   const [supported, setSupported] = useState(true);
   useLayoutEffect(() => {
-    const value = typeof window !== 'undefined' && typeof window.PointerEvent === 'function';
+    const hasPointerEvent = typeof window !== 'undefined' && typeof window.PointerEvent === 'function';
+    const isPrimaryTouch =
+      typeof window !== 'undefined' &&
+      'ontouchstart' in window &&
+      window.matchMedia('(pointer: coarse)').matches;
+    const value = hasPointerEvent && !isPrimaryTouch;
     const id = requestAnimationFrame(() => setSupported(value));
     return () => cancelAnimationFrame(id);
   }, []);
