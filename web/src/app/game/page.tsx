@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState, Suspense, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PageShell } from '@/components/layout/PageShell';
@@ -17,14 +17,12 @@ import { deserializeMatchState } from '@/lib/game/scoring';
 import { GameBoard } from '@/components/game/GameBoard';
 import { GameHelpSidebar } from '@/components/game/GameHelpSidebar';
 import { GameRankingSidebar } from '@/components/game/GameRankingSidebar';
-import { navLinkClass, navIconButtonClass, navGapClass, headerInnerClass } from '@/components/layout/navStyles';
 import { CaptureFx } from '@/components/game/CaptureFx';
 import { BlitzTimer } from '@/components/game/BlitzTimer';
 import { ReplayBoard } from '@/components/game/ReplayBoard';
-import { Trophy, RotateCcw, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { submitDailyScore } from '@/lib/game/daily';
-import { cn } from '@/lib/utils';
 
 function GameContent() {
   const searchParams = useSearchParams();
@@ -36,11 +34,13 @@ function GameContent() {
   const [userId, setUserId] = useState<string | null>(null);
   const [pvpLoading, setPvpLoading] = useState(!!(mode === 'pvp' && gameId));
   const [pvpError, setPvpError] = useState<string | null>(null);
+  const [pvpGameStatus, setPvpGameStatus] = useState<'waiting' | 'active' | 'finished' | 'abandoned' | null>(null);
   const [pvpData, setPvpData] = useState<{
     myRole: MyRole;
     initialMatchState: ReturnType<typeof deserializeMatchState>;
     player1Id: string | null;
     player2Id: string | null;
+    inviteCode: string | null;
   } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
@@ -51,6 +51,27 @@ function GameContent() {
   }, []);
 
   const router = useRouter();
+
+  // Realtime: Bei wartendem PvP-Spiel auf status = 'active' warten (Gegner beigetreten)
+  useEffect(() => {
+    if (mode !== 'pvp' || !gameId || pvpGameStatus !== 'waiting') return;
+    const channel = supabase.channel('game-waiting-' + gameId).on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'games', filter: 'id=eq.' + gameId },
+      (payload: { new: { status: string; player2_id?: string | null } }) => {
+        if (payload?.new?.status === 'active') {
+          setPvpGameStatus('active');
+          if (payload.new.player2_id) {
+            setPvpData((prev) => prev ? { ...prev, player2Id: payload.new.player2_id ?? null } : prev);
+          }
+        }
+      }
+    ).subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [mode, gameId, pvpGameStatus]);
+
   useEffect(() => {
     if (mode !== 'pvp' || !gameId) return;
     let cancelled = false;
@@ -68,7 +89,7 @@ function GameContent() {
         }
         const { data: game, error } = await supabase
           .from('games')
-          .select('state_json, player1_id, player2_id, status')
+          .select('state_json, player1_id, player2_id, status, invite_code')
           .eq('id', gameId)
           .single();
         if (cancelled) return;
@@ -77,6 +98,7 @@ function GameContent() {
           setPvpLoading(false);
           return;
         }
+        const status = (game.status as 'waiting' | 'active' | 'finished' | 'abandoned') ?? 'waiting';
         const myRole: MyRole = game.player1_id === uid ? 'player1' : (game.player2_id === uid ? 'player2' : 'player1');
         if (game.player1_id !== uid && game.player2_id !== uid) {
           setPvpError('Du bist nicht Teil dieses Spiels');
@@ -84,11 +106,13 @@ function GameContent() {
           return;
         }
         const initialMatchState = deserializeMatchState((game.state_json as object) ?? {});
+        setPvpGameStatus(status);
         setPvpData({
           myRole,
           initialMatchState,
           player1Id: game.player1_id ?? null,
           player2Id: game.player2_id ?? null,
+          inviteCode: (game as { invite_code?: string | null }).invite_code ?? null,
         });
         if (!cancelled) setPvpLoading(false);
       } catch {
@@ -153,7 +177,7 @@ function GameContent() {
     if (started) (window as unknown as { __matchStartTime?: number }).__matchStartTime = Date.now();
   }, [started]);
 
-  const isMainGameView = started && !(mode === 'pvp' && gameId && (pvpLoading || !pvpData || pvpError));
+  const isMainGameView = started && !(mode === 'pvp' && gameId && (pvpLoading || !pvpData || pvpError || pvpGameStatus === 'waiting'));
   useEffect(() => {
     if (!isMainGameView) return;
     const prevBody = document.body.style.overflow;
@@ -169,8 +193,7 @@ function GameContent() {
   if (!started) {
     const playBackHref = blitz ? '/play?mode=blitz' : '/play?mode=classic';
     return (
-      <PageShell backHref={playBackHref}>
-        <AppHeader showRanking showAuth />
+      <PageShell backHref={playBackHref} header={<AppHeader showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
           <h1 className="font-display text-2xl font-bold text-center text-game-text">
             Wie möchtest du spielen?
@@ -216,6 +239,59 @@ function GameContent() {
     );
   }
 
+  if (mode === 'pvp' && gameId && !pvpLoading && pvpData && pvpGameStatus === 'waiting') {
+    const inviteCode = pvpData.inviteCode ?? '';
+    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby?join=${inviteCode}` : '';
+    return (
+      <PageShell backHref="/lobby" header={<AppHeader showRanking showAuth />}>
+        <main className="flex-1 flex flex-col items-center justify-center gap-6 py-12 pb-20 px-4">
+          <h1 className="font-display text-2xl font-bold text-center text-game-text">
+            Warte auf Gegner
+          </h1>
+          <Card className="w-full max-w-md border-game-accent/20">
+            <CardHeader>
+              <CardTitle className="font-display text-game-text">Partie erstellt</CardTitle>
+              <CardDescription className="text-game-text-muted">
+                Teile den Einladungslink oder Code mit deinem Gegner. Sobald jemand beitritt, geht es los.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {inviteCode && (
+                <div className="rounded-lg bg-game-bg-subtle/50 p-3 text-center">
+                  <p className="text-xs text-game-text-muted mb-1">Code</p>
+                  <p className="font-mono text-lg tracking-widest text-game-text">{inviteCode}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 border-game-border text-game-text hover:bg-game-surface-hover"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(shareUrl);
+                    }}
+                  >
+                    Link kopieren
+                  </Button>
+                </div>
+              )}
+              <p className="text-game-text-muted text-sm text-center animate-pulse">
+                Gegner beitreten… Du kannst die Seite offen lassen.
+              </p>
+              <div className="flex justify-center">
+                <div className="h-2 w-32 rounded-full bg-game-bg-subtle overflow-hidden">
+                  <div className="h-full w-1/3 rounded-full bg-game-primary animate-[pulse_1.5s_ease-in-out_infinite]" />
+                </div>
+              </div>
+              <Link href="/lobby">
+                <Button variant="outline" className="w-full border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
+                  Zurück zur Lobby
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </main>
+      </PageShell>
+    );
+  }
+
   const myPts = game.sc[game.mySide].total;
   const oppPts = game.sc[game.oppSide].total;
   const myWins = game.sc[game.mySide].wins;
@@ -228,100 +304,127 @@ function GameContent() {
   const iAmMaster = masterSide === game.mySide;
 
   return (
-    <div className="fixed inset-0 w-full h-full max-lg:flex lg:static lg:inset-auto lg:w-auto lg:h-auto lg:min-h-screen lg:max-h-dvh bg-game-bg text-game-text flex flex-col overflow-hidden">
+    <div className="fixed inset-0 w-full h-full max-md:min-h-dvh max-md:max-h-dvh max-md:flex md:static md:inset-auto md:w-auto md:h-auto md:min-h-screen md:max-h-dvh bg-game-bg text-game-text flex flex-col overflow-hidden">
       <CaptureFx />
-      {/* Layout: [Header shrink-0] [Board-Bereich flex-1 min-h-0]; unten Platz für Mobile-Dock via pb */}
-      <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)] pt-6 max-lg:pt-[var(--game-top-padding-mobile)] flex flex-col flex-1 min-h-0 overflow-hidden">
-        <header className="game-nav-header rounded-xl p-[1px] shrink-0 shadow-lg shadow-black/5 bg-[var(--game-glass-gradient)] mb-2 max-lg:mb-1.5 overflow-hidden">
-          <div className={cn('overflow-hidden', headerInnerClass)}>
-            {/* Zeile 1: Logo + Nav — Mobile: weniger Innenabstand */}
-            <div className="flex items-center justify-between p-4 max-lg:py-2.5 max-lg:px-3 shrink-0">
-              <Link href="/" className="font-display font-black text-game-text text-lg tracking-wide shrink-0">
-                Stack<em className="text-game-primary not-italic" style={{ textShadow: 'var(--game-logo-glow)' }}>Tac</em>Toe
-              </Link>
-              <div className="flex-1 min-w-4" aria-hidden />
-              <div className={cn('flex items-center min-w-0 justify-end', navGapClass)}>
-                <nav className={cn('hidden md:flex items-center min-w-0', navGapClass)} aria-label="Spiel-Aktionen">
-                  <button type="button" onClick={() => setRankingOpen(true)} className={navLinkClass}>Rangliste</button>
-                  <button type="button" onClick={() => game.resetMatch()} className={navLinkClass}>Neustart</button>
-                  <button type="button" onClick={() => setHelpOpen(true)} className={navLinkClass}>Spielregeln</button>
-                </nav>
-                <div className="flex md:hidden items-center gap-1">
-                  <button type="button" className={navIconButtonClass} title="Rangliste" onClick={() => setRankingOpen(true)} aria-label="Rangliste">
-                    <Trophy className="h-4 w-4 shrink-0" aria-hidden />
-                  </button>
-                  <button type="button" className={navIconButtonClass} title="Neustart (gleicher Modus)" onClick={() => game.resetMatch()} aria-label="Neustart">
-                    <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
-                  </button>
-                  <button type="button" className={navIconButtonClass} title="Spielregeln" onClick={() => setHelpOpen(true)} aria-label="Spielregeln">
-                    <HelpCircle className="h-4 w-4 shrink-0" aria-hidden />
-                  </button>
-                </div>
-              </div>
-            </div>
-            {/* Zeile 2: Billboard (Du | Runde | KI) — Mobile: weniger Innenabstand */}
-            <div className="flex flex-wrap items-stretch justify-between gap-3 md:gap-4 px-4 pb-4 pt-4 max-lg:px-3 max-lg:py-3 border-t border-game-border/50 min-h-[var(--game-billboard-min-h)] md:min-h-[var(--game-billboard-min-h-md)]">
-              <div className="flex flex-col gap-2 min-w-0 flex-1 basis-0 max-w-[240px]">
-                <div className="flex flex-col gap-2 w-full">
-                  <div className="rounded-xl p-[1px] overflow-hidden shadow-sm" style={{ background: 'var(--game-border-gradient)' }}>
-                    <div className="flex items-center justify-between gap-2 md:gap-3 w-full px-2.5 py-2.5 md:px-3 md:py-3 rounded-[11px] bg-[var(--game-surface-score-soft)] backdrop-blur-sm border border-game-border-soft-subtle shadow-[0_1px_2px_rgba(0,0,0,0.12)]">
-                      <span className="font-display font-bold text-game-primary shrink-0 text-sm md:text-base">Du</span>
-                      <span className="font-display font-bold text-lg md:text-2xl text-game-accent text-right shrink-0">{myPts} <span className="text-xs md:text-base font-semibold text-game-text-muted"><span className="md:hidden">Pkt.</span><span className="hidden md:inline">Punkte</span></span></span>
+      {/* Einheitlicher Header: Logo + MENÜ (Sidebar), gleiche Breite wie Content */}
+      <div
+        className="fixed top-0 left-0 right-0 z-50 flex justify-center"
+        style={{
+          marginTop: 'var(--game-header-margin)',
+          marginBottom: 0,
+          marginLeft: 0,
+          marginRight: 0,
+          background: 'var(--game-bg)',
+        }}
+      >
+        <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)]">
+          <AppHeader showRanking showAuth />
+        </div>
+      </div>
+      {/* Inhalt unter dem Header: Spielbereich (main mit Billboard + Brett); Rahmen endet mit Abstand zum unteren Rand */}
+      <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)] pt-[var(--game-header-height)] pb-4 md:pb-6 flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col items-center justify-center min-h-0 w-full md:pb-0">
+          <main className="w-full flex flex-col items-center flex-1 min-h-0 pt-[var(--game-board-zone-gap)] md:pt-0 max-md:min-h-0 max-md:overflow-hidden" aria-label="Spielbereich">
+            {/* Rahmen: Mobile Billboard oben im Rahmen (border-bottom), dann Spielbrett; Desktop ab 768px */}
+            <div className="w-full flex flex-col flex-1 min-h-0 max-md:min-h-[200px] mt-4 md:mt-6 max-md:mt-4 max-md:mb-0 mb-4 md:mb-6 game-nav-header rounded-xl p-[1px] shadow-lg shadow-black/5 overflow-hidden max-md:pb-0 pb-[var(--game-dock-reserve-height)] md:pb-0 md:flex-initial md:min-h-0 md:mt-6">
+              <div className="min-h-0 flex flex-col flex-1 w-full rounded-[11px] backdrop-blur-2xl bg-game-surface/90">
+                {/* Mobile: Du | Runde/Status | KI oben im Rahmen, Trennlinie nach unten */}
+                <div className="flex flex-wrap items-stretch justify-between gap-3 md:gap-4 px-4 pb-4 pt-4 max-md:px-5 max-md:pt-0 max-md:pb-0 min-h-[var(--game-billboard-min-h)] shrink-0 md:hidden w-full max-md:border-b max-md:border-game-border max-md:grid max-md:grid-cols-[auto_1fr_auto] max-md:gap-4 max-md:items-stretch max-md:justify-between">
+                  <div className="flex flex-col gap-2 min-w-0 max-md:min-w-0 md:hidden max-md:justify-self-start max-md:min-h-full max-md:border-r max-md:border-game-border max-md:pr-6 max-md:py-2">
+                    <div className="flex flex-col gap-2 max-md:gap-1.5 w-full min-w-0 max-md:min-h-[58px] max-md:justify-center">
+                      <div className="flex items-center justify-between gap-4 max-md:gap-5 w-full max-md:flex-col max-md:items-start max-md:gap-0">
+                        <span className="font-display font-bold text-game-primary shrink-0 text-sm">Du</span>
+                        <span className="font-display font-bold text-lg max-md:text-base text-game-accent text-right shrink-0 tabular-nums max-md:text-left">{myPts} <span className="text-xs font-semibold text-game-text-muted">Pkt.</span></span>
+                      </div>
+                      <div className="flex gap-1.5 max-md:gap-1 max-md:justify-start justify-center flex-wrap min-h-[10px] mt-2 md:mt-0 max-md:mt-1 max-md:mb-2 flex-shrink-0">
+                        {[0, 1, 2, 3, 4].map((i) => {
+                          const filled = game.sc[game.mySide].wins > i;
+                          return (
+                            <div key={i} aria-hidden className={`w-2.5 h-2.5 max-md:w-2 max-md:h-2 rounded-full shrink-0 transition-all ${filled ? 'bg-game-success ring-2 ring-game-success/70 shadow-[0_0_8px_var(--game-success)]' : 'bg-game-border'}`} title={filled ? `Gewonnen ${i + 1}/5` : `Sieg ${i + 1}/5`} />
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-1.5 justify-center flex-wrap min-h-[10px] mt-2 md:mt-0 flex-shrink-0">
-                    {[0, 1, 2, 3, 4].map((i) => {
-                      const filled = game.sc[game.mySide].wins > i;
-                      return (
-                        <div key={i} aria-hidden className={`w-2.5 h-2.5 rounded-full shrink-0 transition-all ${filled ? 'bg-game-primary ring-2 ring-game-primary/70 shadow-[0_0_8px_var(--game-primary)]' : 'bg-game-border'}`} title={filled ? `Gewonnen ${i + 1}/5` : `Sieg ${i + 1}/5`} />
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col items-center justify-center gap-1 flex-1 min-w-0 basis-0 shrink-0 px-2 max-w-[400px] pt-1 md:pt-0">
-                <div className="w-full py-1 pt-2 md:pt-1 flex flex-col items-center justify-center text-center">
-                  <div className="font-display font-bold text-game-text text-lg md:text-xl">Runde {game.round}/{game.ROUNDS_TOTAL}</div>
-                  <p className={`text-xs md:text-sm text-game-text-muted font-medium mt-1 ${game.stt.over ? 'text-game-accent' : ''}`}>
-                    {game.stt.over ? (game.stt.winner === null ? 'Unentschieden' : game.stt.winner === game.mySide ? 'Gewonnen' : 'Verloren') : game.locked ? (mode === 'pvp' ? 'Gegner denkt…' : 'KI denkt…') : game.myTurn ? 'Du bist am Zug' : (mode === 'pvp' ? 'Gegner am Zug' : 'KI am Zug')}
-                  </p>
-                  {game.blitz && <div className="mt-1.5"><BlitzTimer active={game.myTurn && !game.stt.over} onTimeout={game.triggerBlitzTimeout} /></div>}
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 min-w-0 flex-1 basis-0 max-w-[240px] items-end">
-                <div className="flex flex-col gap-2 w-full">
-                  <div className="rounded-xl p-[1px] overflow-hidden shadow-sm" style={{ background: 'var(--game-border-gradient)' }}>
-                    <div className={`flex items-center justify-between gap-2 md:gap-3 w-full px-2.5 py-2.5 md:px-3 md:py-3 rounded-[11px] backdrop-blur-sm border border-game-border-soft-subtle shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${!game.myTurn && !game.stt.over ? 'bg-game-secondary/10' : 'bg-[var(--game-surface-score-soft)]'}`}>
-                      <span className="font-display font-bold text-game-secondary shrink-0 text-sm md:text-base">{mode === 'pvp' ? 'Gegner' : 'KI'}</span>
-                      <span className="font-display font-bold text-lg md:text-2xl text-game-accent text-right shrink-0">{oppPts} <span className="text-xs md:text-base font-semibold text-game-text-muted"><span className="md:hidden">Pkt.</span><span className="hidden md:inline">Punkte</span></span></span>
+                  <div className="flex flex-col items-center justify-center gap-1 max-md:gap-2 min-w-0 max-md:min-w-[17ch] flex-1 basis-0 shrink-0 md:flex-initial md:basis-auto px-2 max-w-[400px] pt-1 md:pt-0 max-md:pt-0 max-md:justify-self-center">
+                    <div className="w-full py-1 pt-2 md:pt-1 max-md:py-0 max-md:pt-0 flex flex-col items-center justify-center text-center max-md:gap-2">
+                      <div className="font-display font-bold text-lg max-md:text-xl md:text-xl"><span className="text-game-text">Runde </span><span className="text-game-accent tabular-nums">{game.round}/{game.ROUNDS_TOTAL}</span></div>
+                      <p className={`text-xs md:text-sm text-game-text-muted font-medium mt-1 max-md:mt-0 max-md:text-sm ${game.stt.over ? 'text-game-accent' : ''}`}>
+                        {game.stt.over ? (game.stt.winner === null ? 'Unentschieden' : game.stt.winner === game.mySide ? 'Gewonnen' : 'Verloren') : game.locked ? (mode === 'pvp' ? 'Gegner denkt…' : 'KI denkt…') : game.myTurn ? 'Du bist am Zug' : (mode === 'pvp' ? 'Gegner am Zug' : 'KI am Zug')}
+                      </p>
+                      {game.blitz && <div className="mt-1.5"><BlitzTimer active={game.myTurn && !game.stt.over} onTimeout={game.triggerBlitzTimeout} /></div>}
                     </div>
                   </div>
-                  <div className="flex gap-1.5 justify-center flex-wrap min-h-[10px] mt-2 md:mt-0 flex-shrink-0">
-                    {[0, 1, 2, 3, 4].map((i) => {
-                      const filled = game.sc[game.oppSide].wins > i;
-                      return (
-                        <div key={i} aria-hidden className={`w-2.5 h-2.5 rounded-full shrink-0 transition-all ${filled ? 'bg-game-success ring-2 ring-game-success/70 shadow-[0_0_8px_var(--game-success)]' : 'bg-game-border'}`} title={filled ? `Gegner gewonnen ${i + 1}/5` : `Sieg ${i + 1}/5`} />
-                      );
-                    })}
+                  <div className="flex flex-col gap-2 min-w-0 items-end md:hidden max-md:justify-self-end max-md:min-h-full max-md:border-l max-md:border-game-border max-md:pl-6 max-md:py-2">
+                    <div className="flex flex-col gap-2 max-md:gap-1.5 w-full min-w-0 max-md:min-h-[58px] max-md:justify-center">
+                      <div className="flex items-center justify-between gap-4 max-md:gap-5 w-full max-md:flex-col max-md:items-start max-md:gap-0">
+                        <span className="font-display font-bold text-game-secondary shrink-0 text-sm">{mode === 'pvp' ? 'Gegner' : 'KI'}</span>
+                        <span className="font-display font-bold text-lg max-md:text-base text-game-accent text-right shrink-0 tabular-nums max-md:text-left">{oppPts} <span className="text-xs font-semibold text-game-text-muted">Pkt.</span></span>
+                      </div>
+                      <div className="flex gap-1.5 max-md:gap-1 max-md:justify-start justify-center flex-wrap min-h-[10px] mt-2 md:mt-0 max-md:mt-1 max-md:mb-2 flex-shrink-0">
+                        {[0, 1, 2, 3, 4].map((i) => {
+                          const filled = game.sc[game.oppSide].wins > i;
+                          return (
+                            <div key={i} aria-hidden className={`w-2.5 h-2.5 max-md:w-2 max-md:h-2 rounded-full shrink-0 transition-all ${filled ? 'bg-game-success ring-2 ring-game-success/70 shadow-[0_0_8px_var(--game-success)]' : 'bg-game-border'}`} title={filled ? `Gegner gewonnen ${i + 1}/5` : `Sieg ${i + 1}/5`} />
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
+                <GameBoard
+                  stt={game.stt}
+                  mySide={game.mySide}
+                  myTurn={game.myTurn}
+                  locked={game.locked}
+                  onMove={game.humanMove}
+                  lastPlacedCell={game.lastPlacedCell}
+                  lastUsedPieceSize={game.lastUsedPieceSize}
+                  opponentLabel={mode === 'pvp' ? 'Gegner' : 'KI'}
+                  billboardSlot={
+                    <div className="flex flex-col items-center justify-center gap-1 px-2 py-3 pb-4">
+                      <div className="font-display font-bold text-lg md:text-xl"><span className="text-game-text">Runde </span><span className="text-game-accent tabular-nums">{game.round}/{game.ROUNDS_TOTAL}</span></div>
+                      <p className={`text-xs md:text-sm text-game-text-muted font-medium mt-1 ${game.stt.over ? 'text-game-accent' : ''}`}>
+                        {game.stt.over ? (game.stt.winner === null ? 'Unentschieden' : game.stt.winner === game.mySide ? 'Gewonnen' : 'Verloren') : game.locked ? (mode === 'pvp' ? 'Gegner denkt…' : 'KI denkt…') : game.myTurn ? 'Du bist am Zug' : (mode === 'pvp' ? 'Gegner am Zug' : 'KI am Zug')}
+                      </p>
+                      {game.blitz && <div className="mt-1.5"><BlitzTimer active={game.myTurn && !game.stt.over} onTimeout={game.triggerBlitzTimeout} /></div>}
+                    </div>
+                  }
+                  leftScoreSlot={
+                    <div className="flex flex-col gap-3 w-full shrink-0">
+                      <div className="flex items-center justify-between gap-2 w-full">
+                        <span className="font-display font-bold text-game-primary shrink-0 text-sm">Du</span>
+                        <span className="font-display font-bold text-base text-game-accent text-right shrink-0">{myPts} <span className="text-xs font-semibold text-game-text-muted">Punkte</span></span>
+                      </div>
+                      <div className="flex gap-1.5 justify-start flex-wrap min-h-[10px] flex-shrink-0">
+                        {[0, 1, 2, 3, 4].map((i) => {
+                          const filled = game.sc[game.mySide].wins > i;
+                          return (
+                            <div key={i} aria-hidden className={`w-2.5 h-2.5 rounded-full shrink-0 transition-all ${filled ? 'bg-game-success ring-2 ring-game-success/70 shadow-[0_0_8px_var(--game-success)]' : 'bg-game-border'}`} title={filled ? `Gewonnen ${i + 1}/5` : `Sieg ${i + 1}/5`} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  }
+                  rightScoreSlot={
+                    <div className="flex flex-col gap-3 w-full shrink-0">
+                      <div className="flex items-center justify-between gap-2 w-full">
+                        <span className="font-display font-bold text-game-secondary shrink-0 text-sm">{mode === 'pvp' ? 'Gegner' : 'KI'}</span>
+                        <span className="font-display font-bold text-base text-game-accent text-right shrink-0">{oppPts} <span className="text-xs font-semibold text-game-text-muted">Punkte</span></span>
+                      </div>
+                      <div className="flex gap-1.5 justify-start flex-wrap min-h-[10px] flex-shrink-0">
+                        {[0, 1, 2, 3, 4].map((i) => {
+                          const filled = game.sc[game.oppSide].wins > i;
+                          return (
+                            <div key={i} aria-hidden className={`w-2.5 h-2.5 rounded-full shrink-0 transition-all ${filled ? 'bg-game-success ring-2 ring-game-success/70 shadow-[0_0_8px_var(--game-success)]' : 'bg-game-border'}`} title={filled ? `Gegner gewonnen ${i + 1}/5` : `Sieg ${i + 1}/5`} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  }
+                />
               </div>
             </div>
-          </div>
-        </header>
-        {/* Board-Zone: restliche Höhe zwischen Header und Dock; Brett mittig in dieser Zone (pb = Dock inkl. Überragen + Abstand) */}
-        <div className="flex-1 flex flex-col items-center justify-center min-h-0 w-full pb-[var(--game-dock-reserve-height)] lg:pb-0">
-          <main className="w-full flex flex-col items-center justify-center flex-1 min-h-0 pt-[var(--game-board-zone-gap)] md:pt-0" aria-label="Spielbereich">
-          <GameBoard
-            stt={game.stt}
-            mySide={game.mySide}
-            myTurn={game.myTurn}
-            locked={game.locked}
-            onMove={game.humanMove}
-            lastPlacedCell={game.lastPlacedCell}
-            lastUsedPieceSize={game.lastUsedPieceSize}
-            opponentLabel={mode === 'pvp' ? 'Gegner' : 'KI'}
-          />
           </main>
         </div>
       </div>
@@ -394,7 +497,21 @@ function GameContent() {
               )}
               <div className="flex gap-2">
                 <Button className="flex-1 bg-game-primary/20 text-game-primary" onClick={() => { game.resetMatch(); game.setModal(null); }} autoFocus>Neues Match</Button>
-                <Link href={mode === 'daily' ? '/daily' : mode === 'pvp' ? '/lobby' : blitz ? '/play?mode=blitz' : '/play?mode=classic'}><Button variant="outline" className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">Zurück</Button></Link>
+                {mode === 'pvp' && searchParams.get('roulette') === '1' ? (
+                  <Button
+                    variant="outline"
+                    className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text"
+                    onClick={() => {
+                      const result = masterSide === null ? 'draw' : iAmMaster ? 'win' : 'loss';
+                      if (typeof window !== 'undefined') window.sessionStorage.setItem('stacktactoe_roulette_last_result', result);
+                      router.push('/lobby?roulette=1');
+                    }}
+                  >
+                    Zurück
+                  </Button>
+                ) : (
+                  <Link href={mode === 'daily' ? '/daily' : mode === 'pvp' ? '/lobby' : blitz ? '/play?mode=blitz' : '/play?mode=classic'}><Button variant="outline" className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">Zurück</Button></Link>
+                )}
               </div>
             </>
           )}

@@ -18,24 +18,26 @@ function PieceDockAside({
   title,
   children,
   order,
+  scoreSlot,
 }: {
   variant: 'human' | 'opponent';
   title: string;
   children: React.ReactNode;
   order: 1 | 3;
+  scoreSlot?: React.ReactNode;
 }) {
-  const titleColor = variant === 'human' ? 'text-game-primary' : 'text-game-secondary';
   const tintClass = variant === 'human' ? 'bg-game-primary/[0.03]' : 'bg-game-secondary/[0.03]';
+  const borderClass = variant === 'human' ? 'border-r border-game-border' : 'border-l border-game-border';
   return (
-    <aside className={`hidden lg:flex flex-col gap-4 w-52 xl:w-60 shrink-0 min-h-0 ${order === 1 ? 'lg:order-1' : 'lg:order-3'}`}>
-      <div className="game-nav-header rounded-2xl p-[1px] h-full min-h-0 flex flex-col overflow-hidden shadow-lg shadow-black/5">
-        <div className={`rounded-[15px] h-full min-h-0 flex flex-col overflow-hidden bg-[var(--game-glass-gradient)] ${tintClass}`}>
-          <div className="piece-dock flex flex-col gap-4 p-4 rounded-[15px] h-full min-h-0 overflow-auto">
-            <span className={`text-xs font-bold uppercase tracking-widest ${titleColor} text-center pb-2`}>{title}</span>
-            <div className="flex flex-col gap-3 flex-1 min-h-0">
-              {children}
-            </div>
+    <aside className={`hidden md:flex flex-col w-52 xl:w-60 shrink-0 min-h-0 ${borderClass} ${order === 1 ? 'md:order-1' : 'md:order-3'}`} aria-label={title}>
+      <div className={`piece-dock flex flex-col gap-4 p-4 h-full min-h-0 overflow-auto ${tintClass}`}>
+        {scoreSlot != null ? (
+          <div className="-mx-4 px-4 pb-5 border-b border-game-border">
+            {scoreSlot}
           </div>
+        ) : null}
+        <div className="flex flex-col gap-3 flex-1 min-h-0">
+          {children}
         </div>
       </div>
     </aside>
@@ -64,9 +66,15 @@ interface GameBoardProps {
   centerTop?: React.ReactNode;
   /** Label für Gegner-Figurenleiste (z. B. "Gegner" oder "KI") */
   opponentLabel?: string;
+  /** Desktop: Score-Block oben in der linken Figurenleiste (Du) */
+  leftScoreSlot?: React.ReactNode;
+  /** Desktop: Score-Block oben in der rechten Figurenleiste (KI/Gegner) */
+  rightScoreSlot?: React.ReactNode;
+  /** Desktop: Runde/Status oben in der Mitte (Figurenleisten reichen dann bis oben) */
+  billboardSlot?: React.ReactNode;
 }
 
-export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, lastUsedPieceSize = null, leftColumn, rightColumn, centerTop, opponentLabel = 'Gegner' }: GameBoardProps) {
+export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, lastUsedPieceSize = null, leftColumn, rightColumn, centerTop, opponentLabel = 'Gegner', leftScoreSlot, rightScoreSlot, billboardSlot }: GameBoardProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hoverCell, setHoverCell] = useState<number | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -137,23 +145,25 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
   const oppSide: Player = mySide === 'human' ? 'ai' : 'human';
 
   const dockSlots = (
-      <div className="grid grid-cols-3 lg:grid-cols-1 gap-1.5 sm:gap-2 lg:gap-3 w-full max-w-2xl lg:max-w-none">
+      <div className="grid grid-cols-3 md:grid-cols-1 gap-3 sm:gap-4 md:gap-5 w-full max-md:max-w-none max-w-2xl md:max-w-none">
         {(['small', 'medium', 'large'] as const).map((size) => {
           const cnt = stt.res[mySide][size];
           const canUse = cnt > 0 && stt.phase === 'placement' && myTurn && !stt.over;
           return (
             <div
               key={size}
-              className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 lg:p-4 rounded-xl border transition-all min-w-0 ${canUse ? 'border-game-border cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : 'border-transparent'} ${cnt <= 0 ? 'opacity-30' : ''}`}
+              className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 md:p-4 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${cnt <= 0 ? 'opacity-30' : ''}`}
               onPointerDown={canUse ? (e) => startDragReserve(size, e) : undefined}
             >
-              <div className="relative w-16 h-24 flex items-end justify-center">
-                <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 ${drag?.type === 'reserve' && drag.size === size ? 'opacity-10' : ''}`} style={pieceSizeStyle(size)}>
+              <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
+                <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size ? 'opacity-10' : ''}`} style={pieceSizeStyle(size)}>
                   <PieceSvg player={mySide} size={size} className="w-full h-full" />
                 </div>
               </div>
-              <span className="text-sm font-semibold text-game-text mt-1.5">{SN[size]}</span>
-              <span className="font-display text-sm font-bold text-game-accent">×{cnt}</span>
+              <div className="dock-slot-labels flex flex-col max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
+                <span className="text-sm font-semibold text-game-text mt-2 max-md:mt-1">{SN[size]}</span>
+                <span className="font-display text-sm font-bold text-game-accent max-md:mt-0">×{cnt}</span>
+              </div>
             </div>
           );
         })}
@@ -161,21 +171,21 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
     );
 
   const opponentDockSlots = (
-      <div className="grid grid-cols-1 gap-2 sm:gap-3 w-full">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 w-full">
         {(['small', 'medium', 'large'] as const).map((size) => {
           const cnt = stt.res[oppSide][size];
           const justUsed = size === lastUsedPieceSize;
           return (
             <div
               key={`${size}-${cnt}`}
-              className={`dock-slot flex flex-col items-center justify-center text-center p-3 sm:p-4 rounded-xl border transition-all min-w-0 ${cnt > 0 ? 'border-game-border/60' : 'border-transparent'} ${cnt <= 0 ? 'opacity-30' : ''}`}
+              className={`dock-slot flex flex-col items-center justify-center text-center p-3 sm:p-4 rounded-xl transition-all min-w-0 ${cnt <= 0 ? 'opacity-30' : ''}`}
             >
-              <div className="relative w-16 h-24 flex items-end justify-center">
-                <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
+              <div className="relative w-16 h-24 flex items-center justify-center">
+                <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
                   <PieceSvg player={oppSide} size={size} className="w-full h-full" />
                 </div>
               </div>
-              <span className="text-sm font-semibold text-game-text mt-1.5">{SN[size]}</span>
+              <span className="text-sm font-semibold text-game-text mt-2">{SN[size]}</span>
               <span className="font-display text-sm font-bold text-game-accent">×{cnt}</span>
             </div>
           );
@@ -185,7 +195,7 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
 
     return (
     <>
-      <div className="flex flex-col w-full flex-1 min-h-0 lg:flex-initial justify-center lg:justify-center items-center">
+      <div className="flex flex-col w-full flex-1 min-h-0 md:flex-initial justify-center md:justify-center items-center">
         {/* Billboard — Du | Runde | KI in einem Rahmen (Desktop + Mobil) */}
         {(leftColumn != null || centerTop != null || rightColumn != null) && (
           <div className="w-full mb-4 mt-2 md:mt-0 shrink-0">
@@ -205,25 +215,26 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
           </div>
         )}
 
-        {/* Desktop: Board in der Mitte, Figurenleisten links/rechts (ohne Wrapper-Farbe) */}
-        <div className="w-full flex-1 min-h-0 flex flex-col lg:overflow-hidden">
-          <div className="flex flex-col lg:flex-row lg:items-stretch lg:justify-center lg:gap-4 w-full flex-1 min-h-0 justify-center items-center lg:items-stretch min-h-0">
+        {/* Board-Bereich: Mobile flex-1 + min-h-0 damit Brett sichtbar, Desktop unverändert */}
+        <div className="w-full flex-1 min-h-0 flex flex-col overflow-auto md:overflow-hidden">
+          <div className="flex flex-col md:flex-row md:items-stretch md:justify-between md:gap-4 w-full flex-1 min-h-0 justify-center items-center md:items-stretch min-h-0">
         {/* Desktop: links — Figurenleiste */}
-        <PieceDockAside variant="human" title="Deine Figuren" order={1}>
+        <PieceDockAside variant="human" title="Deine Figuren" order={1} scoreSlot={leftScoreSlot}>
           {dockSlots}
         </PieceDockAside>
 
-        {/* Center: Spielbrett — Höhe nur aus Flex (kein vh), Abstand oben/unten, immer quadratisch, nie Überlappung */}
-        <div className="flex flex-col items-center justify-center flex-1 min-w-0 min-h-0 order-1 lg:order-2 w-full max-w-full lg:max-w-[min(92vw,var(--game-board-max-width))] mt-4 lg:mt-0 p-[var(--game-board-margin)] box-border overflow-hidden">
-          <div className="bwrap w-full min-h-0 min-w-0 flex-1 h-full max-h-full grid place-items-center">
+        {/* Center: optional Billboard (Runde/Status) + Spielbrett — auf lg volle Höhe, Leisten daneben */}
+        <div className={`flex flex-col items-center justify-center flex-1 min-w-0 min-h-0 order-1 md:order-2 w-full max-w-full md:max-w-[min(92vw,var(--game-board-max-width))] mt-4 md:mt-0 pt-[var(--game-board-margin)] px-[var(--game-board-margin)] pb-6 md:pb-10 box-border overflow-hidden ${billboardSlot ? 'md:justify-start' : ''}`}>
+          {billboardSlot && <div className="hidden md:block w-full shrink-0 mb-4 md:mb-6">{billboardSlot}</div>}
+          <div className="bwrap w-full min-h-0 min-w-0 flex-1 h-full max-h-full grid place-items-center [container-type:size]">
             <div
               ref={boardRef}
-              className="bscene relative h-full max-w-full w-auto aspect-square min-w-0 min-h-0"
+              className="bscene relative w-[min(100cqw,100cqh)] h-[min(100cqw,100cqh)] min-w-0 min-h-0"
               aria-label="Spielbrett"
             >
               <div className="board3d w-full h-full flex items-center justify-center" style={{ perspective: '800px', transformStyle: 'preserve-3d' }}>
                 <div
-                  className="game-board-frame bsurf grid grid-cols-3 gap-1.5 sm:gap-2 p-3 sm:p-4 w-full h-full min-h-0 rounded-xl sm:rounded-[22px] transition-shadow duration-200"
+                  className="game-board-frame bsurf grid grid-cols-3 gap-1.5 sm:gap-2 p-3 sm:p-4 w-full h-full min-h-0 min-w-0 rounded-xl sm:rounded-[22px] transition-shadow duration-200"
                   style={{ transform: 'translateZ(12px)' }}
                 >
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => {
@@ -281,23 +292,18 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
         </div>
 
         {/* Desktop: rechts — nur Figurenleiste (Score im Billboard) */}
-        <PieceDockAside variant="opponent" title={`${opponentLabel} Figuren`} order={3}>
+        <PieceDockAside variant="opponent" title={`${opponentLabel} Figuren`} order={3} scoreSlot={rightScoreSlot}>
           {opponentDockSlots}
         </PieceDockAside>
 
           </div>
         </div>
 
-        {/* Mobil: kompakte Figurenleiste, Figuren dürfen nach oben ragen */}
-        <div
-          className="lg:hidden fixed left-0 right-0 z-30 flex justify-center pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] order-2 overflow-visible"
-          style={{ bottom: 'var(--game-dock-bottom-offset, 0)' }}
-        >
-          <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)] overflow-visible">
-            <div className="game-nav-header game-nav-header--dock rounded-xl p-[1px] shadow-lg shadow-black/5 overflow-visible bg-[var(--game-glass-gradient)]">
-              <div className="mobile-dock rounded-xl backdrop-blur-2xl bg-game-surface/90 p-1.5 flex justify-center overflow-visible">
-                {dockSlots}
-              </div>
+        {/* Mobil: Figurenleiste unten im Rahmen (im Flow), volle Breite, border-top */}
+        <div className="md:hidden w-full flex justify-center pt-1 order-2 overflow-visible shrink-0 border-t border-game-border">
+          <div className="w-full px-[var(--game-content-padding)] overflow-visible py-1.5" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}>
+            <div className="mobile-dock w-full rounded-xl backdrop-blur-2xl bg-game-surface/90 p-1.5 flex justify-center overflow-visible">
+              {dockSlots}
             </div>
           </div>
         </div>

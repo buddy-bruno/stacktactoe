@@ -4,9 +4,7 @@ import { ModeCard } from '@/components/layout/ModeCard';
 
 export default function HomePage() {
   return (
-    <PageShell>
-      <AppHeader showRanking showAuth />
-
+    <PageShell header={<AppHeader showRanking showAuth />}>
       <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
         <h1 className="font-display text-2xl font-bold text-center text-game-text">
           Wähle deinen Modus

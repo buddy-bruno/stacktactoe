@@ -24,8 +24,7 @@ export default function PuzzlePage() {
   const label = (d: string) => (d === 'easy' ? 'Einfach' : d === 'mid' ? 'Mittel' : d === 'hard' ? 'Schwer' : d);
 
   return (
-    <PageShell backHref="/">
-      <AppHeader showRanking showAuth />
+    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
         <Card>
           <CardHeader>

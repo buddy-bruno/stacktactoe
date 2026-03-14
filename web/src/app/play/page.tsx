@@ -19,8 +19,7 @@ function PlayContent() {
 
   if (!mode || (mode !== 'classic' && mode !== 'blitz')) {
     return (
-      <PageShell backHref="/">
-        <AppHeader showRanking showAuth />
+      <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
           <p className="text-game-text-muted text-center">Lade…</p>
         </main>
@@ -32,9 +31,7 @@ function PlayContent() {
   const gameHref = isBlitz ? '/game?mode=ai&blitz=1' : '/game?mode=ai';
 
   return (
-    <PageShell backHref="/">
-      <AppHeader showRanking showAuth />
-
+    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
       <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
         <h1 className="font-display text-2xl font-bold text-center text-game-text">
           Wie möchtest du spielen?
@@ -65,8 +62,7 @@ export default function PlayPage() {
   return (
     <Suspense
       fallback={
-        <PageShell backHref="/">
-          <AppHeader showRanking showAuth />
+        <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
           <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
             <p className="text-game-text-muted text-center">Lade…</p>
           </main>

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { Trophy, LogIn, User } from 'lucide-react';
+import Image from 'next/image';
+import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { navLinkClass, navIconButtonClass, navGapClass, headerInnerClass } from './navStyles';
+import { NavSidebar } from './NavSidebar';
+import { headerInnerClass } from './navStyles';
 
 interface AppHeaderProps {
   showRanking?: boolean;
@@ -16,83 +16,44 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({
-  showRanking = false,
-  showAuth = false,
   rightSlot,
   className,
 }: AppHeaderProps) {
-  /** undefined = noch nicht geladen (kein falsches "Anmelden" anzeigen), null = ausgeloggt, User = eingeloggt */
-  const [user, setUser] = useState<SupabaseUser | null | undefined>(undefined);
-
-  useEffect(() => {
-    // getSession() zuerst (Cache/Storage, schnell), danach Listener für Anmeldung/Abmeldung
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null)).catch(() => setUser(null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header
-      className={cn(
-        'game-nav-header rounded-xl p-[1px] shadow-lg shadow-black/5 overflow-hidden',
-        'bg-[var(--game-glass-gradient)]',
-        className
-      )}
-    >
-      <div className="w-full max-w-[var(--game-content-max-width)] mx-auto">
-        <div className={cn('flex items-center justify-between p-4', headerInnerClass)}>
-        <Link href="/" className="font-display font-black text-game-text text-lg tracking-wide shrink-0">
-          Stack<em className="text-game-primary not-italic" style={{ textShadow: 'var(--game-logo-glow)' }}>Tac</em>Toe
-        </Link>
-        <div className="flex-1 min-w-4" aria-hidden />
-        <nav className={cn('flex items-center min-w-0 justify-end', navGapClass)} aria-label="Navigation">
-          {rightSlot}
-          {showRanking && (
-            <>
-              <Link href="/ranking" className={cn('hidden sm:inline-flex', navLinkClass)}>
-                Rangliste
-              </Link>
-              <Link href="/ranking" aria-label="Rangliste" className={cn('sm:hidden', navIconButtonClass)}>
-                <Trophy className="h-4 w-4 shrink-0" aria-hidden />
-              </Link>
-            </>
-          )}
-          {showAuth && (
-            user === undefined ? (
-              /* Auth noch nicht geladen: Platzhalter, kein falsches "Anmelden" beim Refresh */
-              <>
-                <span className={cn('hidden sm:inline-flex', navLinkClass, 'opacity-0 select-none')} aria-hidden>
-                  Mein Profil
-                </span>
-                <span className={cn('sm:hidden', navIconButtonClass, 'opacity-0 pointer-events-none')} aria-hidden>
-                  <User className="h-4 w-4 shrink-0" />
-                </span>
-              </>
-            ) : user ? (
-              <>
-                <Link href="/profile" className={cn('hidden sm:inline-flex', navLinkClass)}>
-                  Mein Profil
-                </Link>
-                <Link href="/profile" aria-label="Mein Profil" className={cn('sm:hidden', navIconButtonClass)}>
-                  <User className="h-4 w-4 shrink-0" aria-hidden />
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link href="/auth?redirect=/lobby" className={cn('hidden sm:inline-flex', navLinkClass)}>
-                  Anmelden
-                </Link>
-                <Link href="/auth?redirect=/lobby" aria-label="Anmelden" className={cn('sm:hidden', navIconButtonClass)}>
-                  <LogIn className="h-4 w-4 shrink-0" aria-hidden />
-                </Link>
-              </>
-            )
-          )}
-        </nav>
+    <>
+      <header
+        className={cn(
+          'game-nav-header rounded-xl p-[1px] shadow-lg shadow-black/5 overflow-hidden',
+          'bg-[var(--game-glass-gradient)]',
+          className
+        )}
+      >
+        <div className={cn('flex items-center justify-between p-4 max-lg:py-2.5 max-lg:px-3', headerInnerClass)}>
+          <Link href="/" className="shrink-0 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-game-primary rounded-lg" aria-label="StackTacToe Startseite">
+            <Image src="/stacktactoe-logo.png" alt="StackTacToe" width={220} height={40} className="h-8 w-auto" priority />
+          </Link>
+          <div className="flex-1 min-w-4" aria-hidden />
+          <div className="flex items-center gap-2">
+            {rightSlot}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className={cn(
+                'inline-flex items-center justify-center gap-2 h-10 min-h-[40px] px-4 rounded-lg',
+                'text-game-text hover:text-game-primary hover:bg-game-surface-hover transition-colors',
+                'font-medium text-sm'
+              )}
+              aria-label="Menü öffnen"
+            >
+              <Menu className="h-5 w-5 shrink-0" aria-hidden />
+              <span>MENÜ</span>
+            </button>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      <NavSidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+    </>
   );
 }

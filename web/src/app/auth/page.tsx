@@ -56,9 +56,7 @@ function AuthContent() {
   }
 
   return (
-    <PageShell backHref="/">
-      <AppHeader showRanking showAuth />
-
+    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
       <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
         <h1 className="font-display text-2xl font-bold text-center text-game-text">
           {tab === 'login' ? 'Anmelden' : 'Registrieren'}
@@ -120,8 +118,7 @@ function AuthContent() {
 export default function AuthPage() {
   return (
     <Suspense fallback={
-      <PageShell backHref="/">
-        <AppHeader showRanking showAuth />
+      <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
           <p className="text-game-text-muted text-center">Lade…</p>
         </main>

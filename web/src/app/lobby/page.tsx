@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageShell } from '@/components/layout/PageShell';
@@ -11,6 +11,12 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { STT } from '@/lib/game/stt';
 import { serializeMatchState } from '@/lib/game/scoring';
+
+const ROULETTE_SESSION_KEY = 'stacktactoe_roulette_session';
+const ROULETTE_LAST_RESULT_KEY = 'stacktactoe_roulette_last_result';
+const ROULETTE_ROUNDS = 3;
+
+type RouletteSession = { rounds: number; current: number; wins: number };
 
 function generateInviteCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -27,8 +33,18 @@ function LobbyContent() {
   const [joining, setJoining] = useState(false);
   const [createdGame, setCreatedGame] = useState<{ gameId: string; code: string } | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [rouletteSession, setRouletteSession] = useState<RouletteSession | null>(null);
+  const [rouletteEnded, setRouletteEnded] = useState<{ wins: number; rounds: number } | null>(null);
 
   const [authReady, setAuthReady] = useState(false);
+  const [searchingUserId, setSearchingUserId] = useState<string | null>(null);
+  const matchmakingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const rouletteSessionRef = useRef<RouletteSession | null>(null);
+
+  useEffect(() => {
+    rouletteSessionRef.current = rouletteSession;
+  }, [rouletteSession]);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
@@ -38,6 +54,150 @@ function LobbyContent() {
       setAuthReady(true);
     }).catch(() => router.replace('/auth?redirect=/lobby'));
   }, [router]);
+
+  const leaveQueue = useCallback(async () => {
+    await supabase.rpc('leave_matchmaking_queue');
+    if (matchmakingChannelRef.current) {
+      supabase.removeChannel(matchmakingChannelRef.current);
+      matchmakingChannelRef.current = null;
+    }
+    setMatchmaking('idle');
+    setSearchingUserId(null);
+    if (rouletteSessionRef.current) {
+      if (typeof window !== 'undefined') window.sessionStorage.removeItem(ROULETTE_SESSION_KEY);
+      rouletteSessionRef.current = null;
+      setRouletteSession(null);
+      setRouletteEnded(null);
+    }
+  }, []);
+
+  const findMatch = useCallback(async (ranked: boolean) => {
+    setError('');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setError('Bitte zuerst anmelden.');
+      return;
+    }
+    setMatchmaking('searching');
+    setSearchingUserId(user.id);
+    const { data: gameId, error: err } = await supabase.rpc('join_matchmaking_queue', {
+      p_queue_type: ranked ? 'ranked' : 'casual',
+    });
+    if (err) {
+      setError(err.message);
+      setMatchmaking('idle');
+      setSearchingUserId(null);
+      return;
+    }
+    if (gameId) {
+      setMatchmaking('matched');
+      setSearchingUserId(null);
+      const q = rouletteSessionRef.current ? '&roulette=1' : '';
+      router.push(`/game?mode=pvp&id=${gameId}${q}`);
+    }
+  }, [router]);
+
+  // Realtime: wenn wir in "searching" sind, auf neues aktives Spiel warten (wir als player1 oder player2)
+  useEffect(() => {
+    if (matchmaking !== 'searching' || !searchingUserId) return;
+    const uid = searchingUserId;
+    const channel = supabase.channel('lobby-matchmaking-' + uid)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'games', filter: 'player1_id=eq.' + uid },
+        (payload: { new: { id: string; status: string } }) => {
+          if (payload?.new?.status === 'active') {
+            leaveQueue();
+            const q = rouletteSessionRef.current ? '&roulette=1' : '';
+            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'games', filter: 'player2_id=eq.' + uid },
+        (payload: { new: { id: string; status: string } }) => {
+          if (payload?.new?.status === 'active') {
+            leaveQueue();
+            const q = rouletteSessionRef.current ? '&roulette=1' : '';
+            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: 'player1_id=eq.' + uid },
+        (payload: { new: { id: string; status: string } }) => {
+          if (payload?.new?.status === 'active') {
+            leaveQueue();
+            const q = rouletteSessionRef.current ? '&roulette=1' : '';
+            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: 'player2_id=eq.' + uid },
+        (payload: { new: { id: string; status: string } }) => {
+          if (payload?.new?.status === 'active') {
+            leaveQueue();
+            const q = rouletteSessionRef.current ? '&roulette=1' : '';
+            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+          }
+        }
+      )
+      .subscribe();
+    matchmakingChannelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+      matchmakingChannelRef.current = null;
+    };
+  }, [matchmaking, searchingUserId, router, leaveQueue]);
+
+  // Beim Verlassen der Lobby aus der Queue austragen
+  useEffect(() => {
+    return () => {
+      void leaveQueue();
+    };
+  }, [leaveQueue]);
+
+  // Roulette: Nach Rückkehr von einer Partie (roulette=1) Session anwenden und ggf. nächste Suche starten
+  const rouletteFromUrl = searchParams.get('roulette') === '1';
+  useEffect(() => {
+    if (!rouletteFromUrl || !authReady || typeof window === 'undefined') return;
+    const raw = sessionStorage.getItem(ROULETTE_SESSION_KEY);
+    const lastResult = sessionStorage.getItem(ROULETTE_LAST_RESULT_KEY);
+    sessionStorage.removeItem(ROULETTE_LAST_RESULT_KEY);
+    let session: RouletteSession | null = null;
+    try {
+      if (raw) session = JSON.parse(raw) as RouletteSession;
+    } catch {
+      sessionStorage.removeItem(ROULETTE_SESSION_KEY);
+    }
+    if (lastResult && session) {
+      session.current += 1;
+      if (lastResult === 'win') session.wins += 1;
+      sessionStorage.setItem(ROULETTE_SESSION_KEY, JSON.stringify(session));
+    }
+    if (session && session.current > session.rounds) {
+      queueMicrotask(() => {
+        setRouletteEnded({ wins: session.wins, rounds: session.rounds });
+        setRouletteSession(null);
+      });
+      sessionStorage.removeItem(ROULETTE_SESSION_KEY);
+      return;
+    }
+    if (session) {
+      rouletteSessionRef.current = session;
+      queueMicrotask(() => {
+        setRouletteSession(session);
+        setRouletteEnded(null);
+      });
+      if (lastResult && session.current <= session.rounds) {
+        queueMicrotask(() => void findMatch(false));
+      }
+    }
+  }, [rouletteFromUrl, authReady, findMatch]);
 
   async function createGame() {
     setError('');
@@ -112,30 +272,24 @@ function LobbyContent() {
     router.push(`/game?mode=pvp&id=${game.id}`);
   }
 
-  async function findMatch(ranked: boolean) {
-    setError('');
-    setMatchmaking('searching');
-    const { data: gameId, error: err } = await supabase.rpc('join_matchmaking_queue', {
-      p_queue_type: ranked ? 'ranked' : 'casual',
-    });
-    if (err) {
-      setError(err.message);
-      setMatchmaking('idle');
-      return;
-    }
-    if (gameId) {
-      setMatchmaking('matched');
-      router.push(`/game?mode=pvp&id=${gameId}`);
-    } else {
-      setMatchmaking('idle');
-      setError('Kein Gegner gefunden. Versuche es erneut.');
-    }
+  function startRoulette() {
+    const session: RouletteSession = { rounds: ROULETTE_ROUNDS, current: 1, wins: 0 };
+    if (typeof window !== 'undefined') sessionStorage.setItem(ROULETTE_SESSION_KEY, JSON.stringify(session));
+    setRouletteSession(session);
+    setRouletteEnded(null);
+    void findMatch(false);
+  }
+
+  function cancelRoulette() {
+    if (typeof window !== 'undefined') sessionStorage.removeItem(ROULETTE_SESSION_KEY);
+    setRouletteSession(null);
+    setRouletteEnded(null);
+    void leaveQueue();
   }
 
   if (!authReady) {
     return (
-      <PageShell backHref="/">
-        <AppHeader showRanking showAuth />
+      <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
         <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
           <p className="text-game-text-muted text-center py-8">Lade…</p>
         </div>
@@ -144,8 +298,7 @@ function LobbyContent() {
   }
 
   return (
-    <PageShell backHref="/">
-      <AppHeader showRanking showAuth />
+    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
         <Card className="border-game-accent/20">
           <CardHeader>
@@ -154,14 +307,120 @@ function LobbyContent() {
               Finde automatisch einen Gegner für eine Partie.
             </CardDescription>
           </CardHeader>
+          <CardContent className="space-y-3">
+            {matchmaking === 'searching' ? (
+              <>
+                <p className="text-game-text text-center animate-pulse">
+                  Suche läuft… Warte auf einen Gegner. Du kannst die Seite offen lassen.
+                </p>
+                <div className="flex gap-2">
+                  <div className="flex-1 h-2 rounded-full bg-game-bg-subtle overflow-hidden">
+                    <div className="h-full w-1/3 rounded-full bg-game-primary animate-[pulse_1.5s_ease-in-out_infinite]" />
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text"
+                  onClick={() => void leaveQueue()}
+                >
+                  Suche abbrechen
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30"
+                onClick={() => void findMatch(false)}
+              >
+                Schnellsuche starten
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-game-secondary/20">
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Roulette</CardTitle>
+            <CardDescription className="text-game-text-muted">
+              Nacheinander gegen {ROULETTE_ROUNDS} wechselnde Gegner spielen. Eine Partie pro Gegner.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {rouletteEnded !== null ? (
+              <>
+                <p className="text-game-text text-center font-medium">
+                  Roulette beendet. Siege: {rouletteEnded.wins}/{rouletteEnded.rounds}
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full border-game-border text-game-text hover:bg-game-surface-hover"
+                  onClick={() => setRouletteEnded(null)}
+                >
+                  Schließen
+                </Button>
+              </>
+            ) : rouletteSession && matchmaking === 'searching' ? (
+              <>
+                <p className="text-game-text text-center animate-pulse">
+                  Roulette: Suche Gegner {rouletteSession.current}/{rouletteSession.rounds} …
+                </p>
+                <div className="flex justify-center">
+                  <div className="h-2 w-32 rounded-full bg-game-bg-subtle overflow-hidden">
+                    <div className="h-full w-1/3 rounded-full bg-game-secondary animate-[pulse_1.5s_ease-in-out_infinite]" />
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text"
+                  onClick={cancelRoulette}
+                >
+                  Roulette abbrechen
+                </Button>
+              </>
+            ) : !rouletteSession ? (
+              <Button
+                className="w-full bg-game-secondary/20 border-game-secondary/30 text-game-secondary hover:bg-game-secondary/30"
+                onClick={startRoulette}
+                disabled={matchmaking === 'searching'}
+              >
+                Roulette starten ({ROULETTE_ROUNDS} Partien)
+              </Button>
+            ) : (
+              <p className="text-game-text-muted text-sm text-center">
+                Partie {rouletteSession.current}/{rouletteSession.rounds} — Siege: {rouletteSession.wins}. Nach dem Match geht es automatisch weiter.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-game-primary/20">
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Räume</CardTitle>
+            <CardDescription className="text-game-text-muted">
+              Erstelle einen Raum oder trete per Code bei. Im Raum könnt ihr Partien starten und gegeneinander spielen.
+            </CardDescription>
+          </CardHeader>
           <CardContent>
-            <Button
-              className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30"
-              onClick={() => findMatch(false)}
-              disabled={matchmaking === 'searching'}
-            >
-              {matchmaking === 'searching' ? 'Suche…' : 'Schnellsuche starten'}
-            </Button>
+            <Link href="/rooms">
+              <Button variant="outline" className="w-full border-game-primary/30 text-game-primary hover:bg-game-primary/10 hover:text-game-primary">
+                Räume öffnen
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="border-game-accent/20">
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Turniere</CardTitle>
+            <CardDescription className="text-game-text-muted">
+              K.-o.-Turniere erstellen, anmelden und Bracket spielen.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/tournaments">
+              <Button variant="outline" className="w-full border-game-accent/30 text-game-accent hover:bg-game-accent/10 hover:text-game-accent">
+                Turniere öffnen
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
@@ -259,8 +518,7 @@ function LobbyContent() {
 export default function LobbyPage() {
   return (
     <Suspense fallback={
-      <PageShell backHref="/">
-        <AppHeader showRanking showAuth />
+      <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
         <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
           <p className="text-game-text-muted text-center py-8">Lade…</p>
         </div>

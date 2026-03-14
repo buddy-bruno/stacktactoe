@@ -443,6 +443,153 @@ begin
   end if;
 end $$;
 
+-- ─── ROOMS (Phase 5) ─────────────────────────────
+create table if not exists public.rooms (
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null,
+  created_by   uuid references public.profiles(id) on delete set null,
+  invite_code  text unique,
+  max_members  int default 20,
+  is_public    boolean default false,
+  created_at   timestamptz default now()
+);
+create index if not exists idx_rooms_created_by on public.rooms(created_by);
+create index if not exists idx_rooms_invite_code on public.rooms(invite_code);
+
+create table if not exists public.room_members (
+  room_id   uuid references public.rooms(id) on delete cascade not null,
+  user_id   uuid references public.profiles(id) on delete cascade not null,
+  joined_at timestamptz default now(),
+  primary key (room_id, user_id)
+);
+create index if not exists idx_room_members_user on public.room_members(user_id);
+
+alter table public.rooms enable row level security;
+alter table public.room_members enable row level security;
+
+create policy "rooms_select" on public.rooms for select using (true);
+create policy "rooms_insert" on public.rooms for insert with check (auth.uid() is not null);
+create policy "rooms_update" on public.rooms for update using (auth.uid() = created_by);
+
+create policy "room_members_select" on public.room_members for select using (true);
+create policy "room_members_insert" on public.room_members for insert with check (auth.uid() = user_id);
+create policy "room_members_delete" on public.room_members for delete using (auth.uid() = user_id or exists (select 1 from public.rooms r where r.id = room_id and r.created_by = auth.uid()));
+
+-- games.room_id: optionaler Kontext für Räume
+ALTER TABLE public.games ADD COLUMN IF NOT EXISTS room_id uuid references public.rooms(id) on delete set null;
+create index if not exists idx_games_room on public.games(room_id);
+
+-- ─── TOURNAMENTS (Phase 6) ──────────────────────
+create table if not exists public.tournaments (
+  id               uuid primary key default gen_random_uuid(),
+  name             text not null,
+  created_by        uuid references public.profiles(id) on delete set null,
+  status           text default 'draft',   -- draft | registration | running | finished
+  max_participants int default 8,
+  format           text default 'single_elimination',
+  created_at       timestamptz default now(),
+  started_at       timestamptz,
+  finished_at      timestamptz
+);
+create index if not exists idx_tournaments_status on public.tournaments(status);
+create index if not exists idx_tournaments_created_by on public.tournaments(created_by);
+
+create table if not exists public.tournament_participants (
+  tournament_id  uuid references public.tournaments(id) on delete cascade not null,
+  user_id        uuid references public.profiles(id) on delete cascade not null,
+  seed           int,                    -- optional für Setzliste
+  eliminated_at  timestamptz,            -- null = noch im Turnier
+  primary key (tournament_id, user_id)
+);
+create index if not exists idx_tournament_participants_tournament on public.tournament_participants(tournament_id);
+
+create table if not exists public.tournament_matches (
+  id                  uuid primary key default gen_random_uuid(),
+  tournament_id       uuid references public.tournaments(id) on delete cascade not null,
+  round              int not null,       -- 1 = Achtel, 2 = Viertel, 3 = Halb, 4 = Finale
+  match_index_in_round int not null,
+  game_id            uuid references public.games(id) on delete set null,
+  player1_id         uuid references public.profiles(id) on delete set null,
+  player2_id         uuid references public.profiles(id) on delete set null,
+  winner_id          uuid references public.profiles(id) on delete set null,
+  status             text default 'pending',  -- pending | active | finished
+  created_at         timestamptz default now()
+);
+create index if not exists idx_tournament_matches_tournament on public.tournament_matches(tournament_id);
+create index if not exists idx_tournament_matches_round on public.tournament_matches(tournament_id, round);
+
+alter table public.tournaments enable row level security;
+alter table public.tournament_participants enable row level security;
+alter table public.tournament_matches enable row level security;
+
+create policy "tournaments_select" on public.tournaments for select using (true);
+create policy "tournaments_insert" on public.tournaments for insert with check (auth.uid() is not null);
+create policy "tournaments_update" on public.tournaments for update using (auth.uid() = created_by);
+
+create policy "tournament_participants_select" on public.tournament_participants for select using (true);
+create policy "tournament_participants_insert" on public.tournament_participants for insert with check (auth.uid() = user_id);
+create policy "tournament_participants_delete" on public.tournament_participants for delete using (auth.uid() = user_id or exists (select 1 from public.tournaments t where t.id = tournament_id and t.created_by = auth.uid()));
+
+create policy "tournament_matches_select" on public.tournament_matches for select using (true);
+create policy "tournament_matches_all" on public.tournament_matches for all using (exists (select 1 from public.tournaments t where t.id = tournament_id and (t.created_by = auth.uid() or auth.uid() in (select user_id from public.tournament_participants where tournament_id = t.id))));
+
+-- Start tournament: set status to registration, then when starting generate round-1 matches (single elimination)
+create or replace function public.start_tournament(p_tournament_id uuid)
+returns void language plpgsql security definer as $$
+declare
+  v_created_by uuid;
+  v_status text;
+  v_max int;
+  v_participants uuid[];
+  v_i int;
+  v_n int;
+  v_round1_matches int;
+begin
+  select created_by, status, max_participants into v_created_by, v_status, v_max
+  from public.tournaments where id = p_tournament_id;
+  if v_created_by is null or v_created_by != auth.uid() then return; end if;
+  if v_status != 'registration' then return; end if;
+
+  select array_agg(user_id order by seed nulls last, user_id) into v_participants
+  from public.tournament_participants where tournament_id = p_tournament_id;
+  v_n := coalesce(array_length(v_participants, 1), 0);
+  if v_n < 2 then return; end if;
+
+  -- Round 1: ceil(n/2) matches (e.g. 8 -> 4 matches)
+  v_round1_matches := (v_n + 1) / 2;
+  for v_i in 0 .. v_round1_matches - 1 loop
+    insert into public.tournament_matches (tournament_id, round, match_index_in_round, player1_id, player2_id, status)
+    values (
+      p_tournament_id,
+      1,
+      v_i,
+      v_participants[v_i * 2 + 1],
+      case when v_i * 2 + 2 <= v_n then v_participants[v_i * 2 + 2] else null end,
+      'pending'
+    );
+  end loop;
+
+  update public.tournaments set status = 'running', started_at = now() where id = p_tournament_id;
+end;
+$$;
+
+-- Wenn ein Spiel (das einem Turnier-Match zugeordnet ist) beendet wird: Match als finished markieren und Sieger setzen
+create or replace function public.sync_tournament_match_on_game_finished()
+returns trigger language plpgsql security definer as $$
+begin
+  if new.status = 'finished' and old.status is distinct from 'finished' then
+    update public.tournament_matches
+    set winner_id = new.winner_id, status = 'finished'
+    where game_id = new.id;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists on_game_finished_sync_tournament on public.games;
+create trigger on_game_finished_sync_tournament
+  after update on public.games
+  for each row execute function public.sync_tournament_match_on_game_finished();
+
 -- ─── MIGRATION: Spalten für games (falls Tabelle schon existierte) ─────
 ALTER TABLE public.games ADD COLUMN IF NOT EXISTS round int DEFAULT 1;
 ALTER TABLE public.games ADD COLUMN IF NOT EXISTS round_results jsonb DEFAULT '[]';

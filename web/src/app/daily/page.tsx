@@ -38,8 +38,7 @@ export default function DailyPage() {
   }, [today]);
 
   return (
-    <PageShell backHref="/">
-      <AppHeader showRanking showAuth />
+    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
         {isLoggedIn === false && (
           <Card className="border-game-primary/30 bg-game-primary/5">

@@ -117,10 +117,12 @@
    * Semantik: primary = Nutzer/Spieler 1, secondary = Gegner/KI, accent = Punkte/Highlight,
    * success = Sieg/positiv, danger = Fehler/Niederlage. Modus-Farben leiten daraus ab.
    */
-  /* Layout */
+  /* Layout — einheitliche Abstände für Header + Main; responsive nach Breakpoint */
   --game-content-max-width: 1240px;
   --game-content-padding: 1rem;
-  --game-header-height: 4.25rem;
+  --game-header-margin: 0.5rem;
+  --game-header-inner: 4rem;
+  --game-header-height: calc(var(--game-header-margin) + var(--game-header-inner) + 0.125rem);
   /* Desktop: kein Bottom-Dock im Flow → Reserve 0; Mobile überschreibt in Media Query */
   --game-dock-reserve-height: 0px;
   --game-billboard-height: 5.5rem;
@@ -226,12 +228,24 @@
   --game-piece-ai-sh: rgba(249, 115, 22, 0.4);
 }
 
-/* Mobile + Tablet: berechnete Höhen; Brett mittig zwischen Header und Dock-Zone */
+/* Sehr kleine Bildschirme: weniger Seitenabstand */
+@media (max-width: 480px) {
+  :root {
+    --game-content-padding: 0.75rem;
+    --game-header-margin: 0.375rem;
+  }
+}
+
+/* Mobile + Tablet: berechnete Höhen; Brett mittig zwischen Header und Dock-Zone; Header kompakter */
 @media (max-width: 1023px) {
   :root {
     --game-dock-bottom-offset: env(safe-area-inset-bottom, 0px);
+    --game-billboard-min-h: 64px;
+    /* Deutlicher Abstand zwischen Spielbrett und Figurenleiste („etwas gap“) */
+    --game-dock-board-gap: 2.5rem;
     --game-dock-reserve-height: var(--game-dock-reserve-height-mobile);
     --game-header-block-height: 10.5rem;
+    --game-header-inner: 2.75rem;
     --game-board-zone-gap: 0.75rem;
     --piece-small-w: 36px;
     --piece-small-h: 57px;
@@ -242,10 +256,21 @@
   }
 }
 
+/* Tablet/Desktop: mehr Seitenabstand, einheitlich mit Header */
 @media (min-width: 1024px) {
   :root {
+    --game-content-padding: 1.25rem;
+    --game-header-margin: 0.75rem;
     --game-board-margin: 1.25rem;
     --game-board-zone-gap: 1rem;
+  }
+}
+
+/* Große Bildschirme: noch mehr Luft am Rand */
+@media (min-width: 1280px) {
+  :root {
+    --game-content-padding: 1.5rem;
+    --game-header-margin: 1rem;
   }
 }
 
@@ -314,8 +339,9 @@
   min-height: auto;
 }
 .mobile-dock > div {
-  gap: 0.125rem 0.375rem;
-  max-width: 20rem;
+  gap: 0.5rem 2rem;
+  width: 100%;
+  max-width: 16rem;
   margin: 0 auto;
 }
 .mobile-dock .dock-slot {
@@ -325,35 +351,63 @@
   padding: 0.125rem 0.25rem;
   overflow: visible;
 }
-.mobile-dock .dock-slot > div:first-child {
+.mobile-dock .dock-slot .dock-slot-figure {
   width: 2.5rem;
   height: 3.5rem;
   overflow: visible;
+  margin-bottom: 1.25rem;
+}
+.mobile-dock .dock-slot .dock-slot-labels {
+  margin-top: 0;
 }
 .mobile-dock .dock-slot span {
-  font-size: 0.65rem;
-  margin-top: 0.375rem;
-  line-height: 1.1;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.mobile-dock .dock-slot .dock-slot-labels span:first-child {
+  margin-top: 0;
 }
 
-/* Nav/Header: sanfter Rand mit Border-Gradient (Game-Page + AppHeader) */
+/* Nav/Header: leichter Rand (Game-Page + AppHeader) */
 .game-nav-header {
-  border: 1px solid transparent;
+  border: 1px solid var(--game-border-soft-subtle);
   background: linear-gradient(var(--game-bg), var(--game-bg)) padding-box, var(--game-border-gradient) border-box;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
 }
 /* Mobile-Dock: Rand andersherum (unten heller, oben transparent) */
 .game-nav-header--dock {
   background: linear-gradient(var(--game-bg), var(--game-bg)) padding-box, var(--game-border-gradient-reverse) border-box;
 }
 
-/* Spielbrett: moderner Look — weicher Verlauf, dezente Schatten */
+/* Eigenes Scrollbar-Design für PageShell-Scrollbereich */
+.page-shell-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--game-border) var(--game-bg-subtle);
+}
+.page-shell-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.page-shell-scroll::-webkit-scrollbar-track {
+  background: var(--game-bg-subtle);
+}
+.page-shell-scroll::-webkit-scrollbar-thumb {
+  background: var(--game-border);
+  border-radius: 4px;
+}
+.page-shell-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--game-primary);
+}
+
+/* Spielbrett: nur 9 Kacheln sichtbar (Hintergrund/Rahmen für Test ausgeblendet) */
 .game-board-frame {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background-image: var(--game-board-bg-modern);
-  background-origin: padding-box;
-  background-clip: padding-box;
-  box-shadow: var(--game-board-shadow-3d);
+  /* border: 1px solid rgba(255, 255, 255, 0.06); */
+  /* background-image: var(--game-board-bg-modern); */
+  /* background-origin: padding-box; */
+  /* background-clip: padding-box; */
+  /* box-shadow: var(--game-board-shadow-3d); */
+  background: transparent;
 }
 
 /* KI-Figur: weicher Einstieg beim Platzieren (von Figurenleiste) */
