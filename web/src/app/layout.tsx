@@ -28,6 +28,13 @@ export const metadata: Metadata = {
   title: "Stack Tac Toe",
   description: "Taktisches Browser-Strategiespiel — 10 Runden, Stapel- und Schlagmechanik. Gegen KI oder Multiplayer, Classic, Puzzle, Blitz.",
   applicationName: "Stack Tac Toe", /* Android/Xiaomi/Redmi: „Zum Startbildschirm hinzufügen“ */
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png", /* iOS: „Zum Home-Bildschirm“ – 180×180 */
+  },
   openGraph: {
     title: "Stack Tac Toe",
     description: "Taktisches Browser-Strategiespiel — 10 Runden, Stapel- und Schlagmechanik.",

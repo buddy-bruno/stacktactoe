@@ -95,6 +95,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
       try {
         if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
       } catch {}
+      router.refresh();
       router.replace('/');
     };
     const channel = supabase.channel('game-abandoned-' + gameId).on(
@@ -349,7 +350,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
     return (
       <div className="min-h-screen bg-game-bg text-game-text flex flex-col items-center justify-center gap-4 p-4">
         <p className="text-game-danger text-center">{pvpError}</p>
-        <Link href="/lobby">
+        <Link href={`/${gameVariant}/lobby`}>
           <Button variant="outline" className="border-game-border text-game-text">Zurück zur Lobby</Button>
         </Link>
       </div>
@@ -358,9 +359,9 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
 
   if (mode === 'pvp' && gameId && !pvpLoading && pvpData && pvpGameStatus === 'waiting') {
     const inviteCode = pvpData.inviteCode ?? '';
-    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/lobby?join=${inviteCode}` : '';
+    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/${gameVariant}/lobby?join=${inviteCode}` : '';
     return (
-      <PageShell backHref="/lobby" header={<AppHeader title="Lobby" showRanking showAuth />}>
+      <PageShell backHref={`/${gameVariant}/lobby`} header={<AppHeader title="Lobby" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center gap-6 py-12 pb-20 px-4">
           <h1 className="font-display text-2xl font-bold text-center text-game-text">Warte auf Gegner</h1>
           <Card className="w-full max-w-md border-game-accent/20">
@@ -387,7 +388,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                 </div>
               </div>
               <div className="flex gap-2">
-                <Link href="/lobby" className="flex-1">
+                <Link href={`/${gameVariant}/lobby`} className="flex-1">
                   <Button variant="outline" className="w-full border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
                     Zurück zur Lobby
                   </Button>
@@ -433,7 +434,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
   const myLabelColor = game.mySide === 'human' ? 'text-game-primary' : 'text-game-secondary';
   const oppLabelColor = game.mySide === 'human' ? 'text-game-secondary' : 'text-game-primary';
 
-  const backHref = mode === 'daily' ? '/daily' : mode === 'pvp' ? '/lobby' : blitz ? '/play?mode=blitz' : gameVariant === 'pool' ? '/play?mode=pool' : gameVariant === 'schach' ? '/play?mode=schach' : '/play?mode=classic';
+  const backHref = mode === 'daily' ? '/daily' : mode === 'pvp' ? `/${gameVariant}/lobby` : blitz ? '/play?mode=blitz' : gameVariant === 'pool' ? '/play?mode=pool' : gameVariant === 'schach' ? '/play?mode=schach' : '/play?mode=classic';
 
   return (
     <div className="fixed inset-0 w-full h-full max-md:min-h-dvh max-md:max-h-dvh max-md:flex md:static md:inset-auto md:w-auto md:h-auto md:min-h-screen md:max-h-dvh bg-game-bg text-game-text flex flex-col overflow-hidden">
@@ -461,6 +462,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   try {
                     if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
                   } catch {}
+                  router.refresh();
                   router.replace('/');
                 }}
               >
@@ -628,7 +630,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
               <div className="flex gap-2">
                 <Button className="flex-1 bg-game-primary/20 text-game-primary" onClick={() => { game.resetMatch(); game.setModal(null); }} autoFocus>Neues Match</Button>
                 {mode === 'pvp' && searchParams.get('roulette') === '1' ? (
-                  <Button variant="outline" className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text" onClick={() => { const result = masterSide === null ? 'draw' : iAmMaster ? 'win' : 'loss'; if (typeof window !== 'undefined') window.sessionStorage.setItem('stacktactoe_roulette_last_result', result); router.push('/lobby?roulette=1'); }}>Zurück</Button>
+                  <Button variant="outline" className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text" onClick={() => { const result = masterSide === null ? 'draw' : iAmMaster ? 'win' : 'loss'; if (typeof window !== 'undefined') window.sessionStorage.setItem('stacktactoe_roulette_last_result', result); router.push(`/${gameVariant}/lobby?roulette=1`); }}>Zurück</Button>
                 ) : (
                   <Link href={backHref}><Button variant="outline" className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">Zurück</Button></Link>
                 )}

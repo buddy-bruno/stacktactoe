@@ -148,7 +148,7 @@ export default function RoomDetailPage() {
     );
   }
 
-  const inviteUrl = typeof window !== 'undefined' && room.invite_code ? `${window.location.origin}/lobby?join=${room.invite_code}` : '';
+  const inviteUrl = typeof window !== 'undefined' && room.invite_code ? `${window.location.origin}/rooms?join=${room.invite_code}` : '';
 
   return (
     <PageShell backHref="/rooms" header={<AppHeader title="Raum" showRanking showAuth />}>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { PageShell } from '@/components/layout/PageShell';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,13 @@ const VARIANT_LABELS: Record<(typeof VARIANTS)[number], string> = {
   schach: 'Schach',
   pool: 'Pool',
   blitz: 'Blitz',
+};
+
+const ROOM_TABS = ['classic', 'schach', 'pool'] as const;
+const ROOM_TAB_LABELS: Record<(typeof ROOM_TABS)[number], string> = {
+  classic: 'Classic',
+  schach: 'Schach',
+  pool: 'Pool',
 };
 
 type Room = {
@@ -35,9 +42,13 @@ function generateRoomCode(): string {
 
 export default function RoomsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [allRooms, setAllRooms] = useState<Room[]>([]);
   const [myRoomIds, setMyRoomIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const tabFromUrl = searchParams.get('tab');
+  const initialTab = (tabFromUrl === 'schach' || tabFromUrl === 'pool' || tabFromUrl === 'classic') ? tabFromUrl : 'classic';
+  const [activeTab, setActiveTab] = useState<(typeof ROOM_TABS)[number]>(initialTab);
   const [createName, setCreateName] = useState('');
   const [createVariant, setCreateVariant] = useState<(typeof VARIANTS)[number]>('classic');
   const [creating, setCreating] = useState(false);
@@ -46,6 +57,17 @@ export default function RoomsPage() {
   const [error, setError] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [memberCountByRoom, setMemberCountByRoom] = useState<Record<string, number>>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const join = searchParams.get('join');
+    if (join && join.trim()) setJoinCode(join.trim().toUpperCase());
+  }, [searchParams]);
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t === 'schach' || t === 'pool' || t === 'classic') setActiveTab(t);
+  }, [searchParams]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -127,6 +149,13 @@ export default function RoomsPage() {
   }, [userId, fetchRooms]);
 
   const myRooms = useMemo(() => allRooms.filter((r) => myRoomIds.has(r.id)), [allRooms, myRoomIds]);
+  const myCreatedRooms = useMemo(() => (userId ? allRooms.filter((r) => r.created_by === userId) : []), [allRooms, userId]);
+  const myCreatedRoomsForTab = useMemo(() => {
+    return myCreatedRooms.filter((r) => {
+      if (activeTab === 'classic') return r.variant === 'classic' || r.variant === 'blitz';
+      return r.variant === activeTab;
+    });
+  }, [myCreatedRooms, activeTab]);
   const roomsByVariant = useMemo(() => {
     const map: Record<string, Room[]> = { classic: [], schach: [], pool: [], blitz: [] };
     for (const r of allRooms) {
@@ -209,9 +238,23 @@ export default function RoomsPage() {
     }
   }
 
+  async function deleteRoom(roomId: string) {
+    if (!userId) return;
+    if (!window.confirm('Raum wirklich löschen? Alle Mitglieder verlieren den Zugang.')) return;
+    setDeletingId(roomId);
+    setError('');
+    const { error: err } = await supabase.from('rooms').delete().eq('id', roomId);
+    setDeletingId(null);
+    if (err) {
+      setError('Raum konnte nicht gelöscht werden.');
+      return;
+    }
+    void fetchRooms();
+  }
+
   if (!userId) {
     return (
-      <PageShell backHref="/lobby" header={<AppHeader title="Räume" showRanking showAuth />}>
+      <PageShell backHref="/classic/lobby" header={<AppHeader title="Räume" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center py-12">
           <p className="text-game-text-muted">Lade…</p>
         </main>
@@ -220,11 +263,122 @@ export default function RoomsPage() {
   }
 
   return (
-    <PageShell backHref="/lobby" header={<AppHeader title="Räume" showRanking showAuth />}>
+    <PageShell backHref="/classic/lobby" header={<AppHeader title="Räume" showRanking showAuth />}>
       <main className="flex-1 flex flex-col gap-6 py-8 pb-20 max-w-2xl mx-auto w-full px-4">
         <h1 className="font-display text-2xl font-bold text-game-text">Räume</h1>
 
-        {/* Räume nach Spielmodi */}
+        {/* Tabs nach Spielmodus */}
+        <div className="flex gap-1 p-1 rounded-lg bg-game-bg-subtle/60 border border-game-border">
+          {ROOM_TABS.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab);
+                setCreateVariant(tab === 'classic' ? 'classic' : tab);
+                const params = new URLSearchParams(searchParams.toString());
+                params.set('tab', tab);
+                router.replace(`/rooms?${params.toString()}`, { scroll: false });
+              }}
+              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${activeTab === tab ? 'bg-game-primary text-white' : 'text-game-text-muted hover:text-game-text hover:bg-game-surface-hover'}`}
+            >
+              {ROOM_TAB_LABELS[tab]}
+            </button>
+          ))}
+        </div>
+
+        {/* Meine Räume (von mir erstellt) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Meine Räume</CardTitle>
+            <CardDescription className="text-game-text-muted">Räume, die du erstellt hast (Modus: {ROOM_TAB_LABELS[activeTab]}). Öffnen oder löschen.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-game-text-muted text-sm">Lade…</p>
+            ) : myCreatedRoomsForTab.length === 0 ? (
+              <p className="text-game-text-muted text-sm">Keine von dir erstellten Räume in diesem Modus. Erstelle einen unten.</p>
+            ) : (
+              <ul className="space-y-2">
+                {myCreatedRoomsForTab.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-game-border bg-game-bg-subtle/40 p-2">
+                    <span className="font-medium text-game-text flex-1 min-w-0 truncate">{r.name}</span>
+                    <span className="text-xs text-game-text-muted tabular-nums">{memberCountByRoom[r.id] ?? 0}/{r.max_members ?? 20}</span>
+                    <Link href={'/room/' + r.id}>
+                      <Button variant="outline" size="sm" className="border-game-border text-game-text hover:bg-game-surface-hover">Öffnen</Button>
+                    </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-game-danger/50 text-game-danger hover:bg-game-danger/10"
+                      disabled={deletingId === r.id}
+                      onClick={() => void deleteRoom(r.id)}
+                    >
+                      {deletingId === r.id ? 'Löschen…' : 'Löschen'}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Raum erstellen (Variant aus Tab vorausgewählt) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Raum erstellen</CardTitle>
+            <CardDescription className="text-game-text-muted">Erstelle einen neuen Raum. Modus entspricht dem gewählten Tab.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Input
+              placeholder="Raumname"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              className="bg-game-bg-subtle/40 border-game-border text-game-text"
+            />
+            <div className="flex flex-wrap gap-2">
+              {VARIANTS.map((v) => (
+                <Button
+                  key={v}
+                  type="button"
+                  variant={createVariant === v ? 'default' : 'outline'}
+                  size="sm"
+                  className={createVariant === v ? 'bg-game-primary text-white' : 'border-game-border text-game-text'}
+                  onClick={() => setCreateVariant(v)}
+                >
+                  {VARIANT_LABELS[v]}
+                </Button>
+              ))}
+            </div>
+            <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30" onClick={() => void createRoom()} disabled={creating}>
+              {creating ? 'Erstelle…' : 'Raum erstellen'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Raum beitreten */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Raum beitreten</CardTitle>
+            <CardDescription className="text-game-text-muted">Gib den Einladungscode des Raums ein.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Input
+              placeholder="ABC123"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.trim().toUpperCase())}
+              className="bg-game-bg-subtle/40 border-game-border font-mono tracking-widest text-game-text"
+              maxLength={6}
+            />
+            <Button className="w-full bg-game-accent/20 border-game-accent/30 text-game-accent hover:bg-game-accent/30" onClick={() => void joinRoom()} disabled={joining}>
+              {joining ? 'Beitreten…' : 'Beitreten'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {error && <p className="text-sm text-game-danger text-center">{error}</p>}
+
+        {/* Räume nach Spielmodi (alle) */}
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-game-text">Räume nach Spielmodus</CardTitle>
@@ -273,99 +427,18 @@ export default function RoomsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display text-game-text">Raum erstellen</CardTitle>
-            <CardDescription className="text-game-text-muted">Erstelle einen neuen Raum und wähle den Spielmodus.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Input
-              placeholder="Raumname"
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              className="bg-game-bg-subtle/40 border-game-border text-game-text"
-            />
-            <div className="flex flex-wrap gap-2">
-              {VARIANTS.map((v) => (
-                <Button
-                  key={v}
-                  type="button"
-                  variant={createVariant === v ? 'default' : 'outline'}
-                  size="sm"
-                  className={createVariant === v ? 'bg-game-primary text-white' : 'border-game-border text-game-text'}
-                  onClick={() => setCreateVariant(v)}
-                >
-                  {VARIANT_LABELS[v]}
-                </Button>
-              ))}
-            </div>
-            <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30" onClick={() => void createRoom()} disabled={creating}>
-              {creating ? 'Erstelle…' : 'Raum erstellen'}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display text-game-text">Raum beitreten</CardTitle>
-            <CardDescription className="text-game-text-muted">Gib den Einladungscode des Raums ein.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Input
-              placeholder="ABC123"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.trim().toUpperCase())}
-              className="bg-game-bg-subtle/40 border-game-border font-mono tracking-widest text-game-text"
-              maxLength={6}
-            />
-            <Button className="w-full bg-game-accent/20 border-game-accent/30 text-game-accent hover:bg-game-accent/30" onClick={() => void joinRoom()} disabled={joining}>
-              {joining ? 'Beitreten…' : 'Beitreten'}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {error && <p className="text-sm text-game-danger text-center">{error}</p>}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display text-game-text">Meine Räume</CardTitle>
-            <CardDescription className="text-game-text-muted">Räume, denen du beigetreten bist.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-game-text-muted text-sm">Lade…</p>
-            ) : myRooms.length === 0 ? (
-              <p className="text-game-text-muted text-sm">Noch keine Räume. Erstelle einen oder trete per Code bei.</p>
-            ) : (
-              <ul className="space-y-2">
-                {myRooms.map((r) => (
-                  <li key={r.id}>
-                    <Link href={'/room/' + r.id}>
-                      <Button variant="outline" className="w-full justify-start border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
-                        <span className="flex-1 text-left truncate">{r.name}</span>
-                        <span className="text-xs text-game-text-muted shrink-0 ml-2 tabular-nums">{memberCountByRoom[r.id] ?? 0}/{r.max_members ?? 20}</span>
-                        <span className="text-xs text-game-text-muted shrink-0 ml-2">{VARIANT_LABELS[r.variant as keyof typeof VARIANT_LABELS] ?? r.variant}</span>
-                      </Button>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
         <Card className="border-game-accent/20">
           <CardHeader>
             <CardTitle className="font-display text-game-text">Schnell spielen</CardTitle>
             <CardDescription className="text-game-text-muted">Ohne Raum direkt einen Gegner finden.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row gap-3">
-            <Link href="/lobby" className="flex-1">
+            <Link href="/classic/lobby" className="flex-1">
               <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
                 Schnell-Suche
               </Button>
             </Link>
-            <Link href="/lobby" className="flex-1">
+            <Link href="/classic/lobby" className="flex-1">
               <Button className="w-full bg-game-accent/20 border-game-accent/30 text-game-accent hover:bg-game-accent/30">
                 Roulette
               </Button>

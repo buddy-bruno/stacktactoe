@@ -140,7 +140,7 @@ export function NavSidebar({ open, onClose }: NavSidebarProps) {
             {user === undefined ? (
               <div className="h-12 flex items-center justify-center text-game-text-muted text-sm">Lade…</div>
             ) : !user ? (
-              <Link href="/zugang?redirect=/lobby" onClick={handleLink} className="block">
+              <Link href="/zugang?redirect=/classic/lobby" onClick={handleLink} className="block">
                 <Button className="w-full h-9 rounded-lg text-sm bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
                   Anmelden / Registrieren
                 </Button>

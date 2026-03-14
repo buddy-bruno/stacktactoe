@@ -53,14 +53,14 @@ export default function TournamentsPage() {
 
   if (!userId) {
     return (
-      <PageShell backHref="/lobby" header={<AppHeader title="Turniere" showRanking showAuth />}>
+      <PageShell backHref="/classic/lobby" header={<AppHeader title="Turniere" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center py-12"><p className="text-game-text-muted">Lade…</p></main>
       </PageShell>
     );
   }
 
   return (
-    <PageShell backHref="/lobby" header={<AppHeader title="Turniere" showRanking showAuth />}>
+    <PageShell backHref="/classic/lobby" header={<AppHeader title="Turniere" showRanking showAuth />}>
       <main className="flex-1 flex flex-col gap-6 py-8 pb-20 max-w-2xl mx-auto w-full px-4">
         <h1 className="font-display text-2xl font-bold text-game-text">Turniere</h1>
 

@@ -511,9 +511,11 @@ alter table public.room_members enable row level security;
 drop policy if exists "rooms_select" on public.rooms;
 drop policy if exists "rooms_insert" on public.rooms;
 drop policy if exists "rooms_update" on public.rooms;
+drop policy if exists "rooms_delete" on public.rooms;
 create policy "rooms_select" on public.rooms for select using (true);
 create policy "rooms_insert" on public.rooms for insert with check (auth.uid() is not null);
 create policy "rooms_update" on public.rooms for update using (auth.uid() = created_by);
+create policy "rooms_delete" on public.rooms for delete using (auth.uid() = created_by);
 
 drop policy if exists "room_members_select" on public.room_members;
 drop policy if exists "room_members_insert" on public.room_members;

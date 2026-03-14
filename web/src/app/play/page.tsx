@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageShell } from '@/components/layout/PageShell';
@@ -22,27 +22,70 @@ function PlayContent() {
     }
   }, [mode, router]);
 
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: rows } = await supabase.rpc('get_my_active_pvp_game', { p_user_id: user.id });
-      const row = Array.isArray(rows) ? rows[0] : null;
-      if (!row?.id) {
-        setActivePvpGame(null);
-        return;
-      }
-      let variant = 'classic';
+  const fetchActivePvpGame = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: rows } = await supabase.rpc('get_my_active_pvp_game', { p_user_id: user.id });
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row?.id) {
+      setActivePvpGame(null);
       try {
-        const stored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('stacktactoe_active_pvp') : null;
-        const parsed = stored ? (JSON.parse(stored) as { gameId?: string; variant?: string }) : null;
-        if (parsed?.gameId === row.id && parsed?.variant) variant = parsed.variant;
-      } catch {
-        // ignore
-      }
-      setActivePvpGame({ id: row.id, variant });
-    })();
+        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
+      } catch {}
+      return;
+    }
+    let variant = 'classic';
+    try {
+      const stored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('stacktactoe_active_pvp') : null;
+      const parsed = stored ? (JSON.parse(stored) as { gameId?: string; variant?: string }) : null;
+      if (parsed?.gameId === row.id && parsed?.variant) variant = parsed.variant;
+    } catch {
+      // ignore
+    }
+    setActivePvpGame({ id: row.id, variant });
   }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => { void fetchActivePvpGame(); }, 0);
+    return () => clearTimeout(t);
+  }, [fetchActivePvpGame]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') void fetchActivePvpGame();
+    };
+    const onFocus = () => { void fetchActivePvpGame(); };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void fetchActivePvpGame();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', onFocus);
+      window.addEventListener('pageshow', onPageShow);
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', onFocus);
+        window.removeEventListener('pageshow', onPageShow);
+      }
+    };
+  }, [fetchActivePvpGame]);
+
+  useEffect(() => {
+    if (!activePvpGame?.id) return;
+    const channel = supabase.channel('play-active-game-' + activePvpGame.id)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: 'id=eq.' + activePvpGame.id }, (payload: { new: { status?: string } }) => {
+        if (payload?.new?.status === 'abandoned') {
+          setActivePvpGame(null);
+          try {
+            if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
+          } catch {}
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [activePvpGame?.id]);
 
   const playTitle = mode === 'blitz' ? 'Blitz' : mode === 'schach' ? 'Schach' : mode === 'pool' ? 'Pool' : 'Classic';
 
@@ -60,7 +103,7 @@ function PlayContent() {
   const isSchach = mode === 'schach';
   const isPool = mode === 'pool';
   const gameHref = isBlitz ? '/game/classic?mode=ai&blitz=1' : isSchach ? '/game/schach?mode=ai' : isPool ? '/game/pool?mode=ai' : '/game/classic?mode=ai';
-  const lobbyHref = isSchach ? '/lobby?variant=schach' : isPool ? '/lobby?variant=pool' : '/lobby';
+  const lobbyHref = isSchach ? '/schach/lobby' : isPool ? '/pool/lobby' : '/classic/lobby';
 
   return (
     <PageShell backHref="/" header={<AppHeader title={playTitle} showRanking showAuth />}>
@@ -89,6 +132,7 @@ function PlayContent() {
                       if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
                     } catch {}
                     setActivePvpGame(null);
+                    router.refresh();
                     router.push('/');
                   }}
                 >
