@@ -79,6 +79,9 @@ export function useGameState(
   const sttRef = useRef(stt);
   const runAiTurnRef = useRef<() => void>(() => {});
   const pvpSubRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const pvpPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const roundRef = useRef(round);
+  const lockedRef = useRef(locked);
   const blitzTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blitzAiDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blitzAiTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -114,6 +117,10 @@ export function useGameState(
   useEffect(() => {
     sttRef.current = stt;
   }, [stt]);
+  useEffect(() => {
+    roundRef.current = round;
+    lockedRef.current = locked;
+  }, [round, locked]);
 
   useEffect(() => {
     aiRef.current = new AI(difficulty);
@@ -363,6 +370,66 @@ export function useGameState(
     pvpSubRef.current = { unsubscribe: () => { supabase.removeChannel(channel); pvpSubRef.current = null; } };
     return () => {
       pvpSubRef.current?.unsubscribe();
+    };
+  }, [mode, gameId, mySide, oppSide]);
+
+  // PvP: Polling-Fallback für zuverlässige Sync (Realtime kann auf Mobilfunk/WLAN ausfallen)
+  useEffect(() => {
+    if (mode !== 'pvp' || !gameId) return;
+    const applyRemote = async () => {
+      const { data: row } = await supabase.from('games').select('state_json').eq('id', gameId).single();
+      if (!row?.state_json) return;
+      try {
+        const parsed = deserializeMatchState(row.state_json as Parameters<typeof deserializeMatchState>[0]);
+        const curRound = roundRef.current;
+        const curLocked = lockedRef.current;
+        const shouldApply = curLocked || parsed.round > curRound;
+        if (!shouldApply) return;
+        const prev = sttRef.current;
+        let cell: number | null = null;
+        let pieceSize: PieceSize | null = null;
+        if (prev.cur === oppSide && (parsed.stt.cur === mySide || parsed.stt.over)) {
+          for (let i = 0; i < 9; i++) {
+            const newStack = parsed.stt.board[i] ?? [];
+            const newTop = newStack[newStack.length - 1];
+            if (newTop?.player === oppSide) {
+              const oldStack = prev.board[i] ?? [];
+              const oldTop = oldStack[oldStack.length - 1];
+              if (!oldTop || oldTop.player !== oppSide || oldTop.size !== newTop.size) {
+                cell = i;
+                pieceSize = newTop.size;
+                break;
+              }
+            }
+          }
+        }
+        setStt(parsed.stt);
+        setSc(parsed.sc);
+        setRound(parsed.round);
+        setRoundResults(parsed.roundResults);
+        setLocked(parsed.stt.cur !== mySide && !parsed.stt.over);
+        if (cell !== null) {
+          setLastPlacedCell(cell);
+          setLastUsedPieceSize(pieceSize);
+        }
+        if (parsed.stt.over) {
+          setLastRoundWinner(parsed.stt.winner);
+          setTimeout(() => setModal('round'), 500);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    const interval = setInterval(applyRemote, 2500);
+    pvpPollRef.current = interval;
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') void applyRemote();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      pvpPollRef.current = null;
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [mode, gameId, mySide, oppSide]);
 

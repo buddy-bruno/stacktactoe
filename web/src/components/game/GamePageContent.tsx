@@ -190,6 +190,21 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
   }, [started]);
 
   const isMainGameView = started && !(mode === 'pvp' && gameId && (pvpLoading || !pvpData || pvpError || pvpGameStatus === 'waiting'));
+
+  // Rejoin: Aktives PvP-Spiel in sessionStorage speichern (für Banner „Weiterspielen“ auf Lobby/Play).
+  useEffect(() => {
+    if (mode === 'pvp' && gameId && pvpGameStatus === 'active' && typeof sessionStorage !== 'undefined') {
+      try {
+        sessionStorage.setItem(
+          'stacktactoe_active_pvp',
+          JSON.stringify({ gameId, variant: gameVariant, updatedAt: Date.now() })
+        );
+      } catch {
+        // ignore
+      }
+    }
+  }, [mode, gameId, gameVariant, pvpGameStatus]);
+
   useEffect(() => {
     if (!isMainGameView) return;
     const prevBody = document.body.style.overflow;
@@ -318,6 +333,10 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
   else if (oppPts > myPts) masterSide = game.oppSide;
   const iAmMaster = masterSide === game.mySide;
 
+  /** Farben für Du/Gegner passend zu mySide: Player1 = blau (primary), Player2 = orange (secondary). */
+  const myLabelColor = game.mySide === 'human' ? 'text-game-primary' : 'text-game-secondary';
+  const oppLabelColor = game.mySide === 'human' ? 'text-game-secondary' : 'text-game-primary';
+
   const backHref = mode === 'daily' ? '/daily' : mode === 'pvp' ? '/lobby' : blitz ? '/play?mode=blitz' : gameVariant === 'pool' ? '/play?mode=pool' : gameVariant === 'schach' ? '/play?mode=schach' : '/play?mode=classic';
 
   return (
@@ -340,7 +359,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   <div className="flex flex-col gap-2 min-w-0 max-md:min-w-0 md:hidden max-md:justify-self-start max-md:min-h-full max-md:border-r max-md:border-game-border max-md:pr-6 max-md:py-2">
                     <div className="flex flex-col gap-2 max-md:gap-1.5 w-full min-w-0 max-md:min-h-[58px] max-md:justify-center">
                       <div className="flex items-center justify-between gap-4 max-md:gap-5 w-full max-md:flex-col max-md:items-start max-md:gap-0">
-                        <span className="font-display font-bold text-game-primary shrink-0 text-sm">Du</span>
+                        <span className={`font-display font-bold shrink-0 text-sm ${myLabelColor}`}>Du</span>
                         <span className="font-display font-bold text-lg max-md:text-base text-game-accent text-right shrink-0 tabular-nums max-md:text-left">{myPts} <span className="text-xs font-semibold text-game-text-muted">Pkt.</span></span>
                       </div>
                       <div className="flex gap-1.5 max-md:gap-1 max-md:justify-start justify-center flex-wrap min-h-[10px] mt-2 md:mt-0 max-md:mt-1 max-md:mb-2 flex-shrink-0">
@@ -365,7 +384,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   <div className="flex flex-col gap-2 min-w-0 items-end md:hidden max-md:justify-self-end max-md:min-h-full max-md:border-l max-md:border-game-border max-md:pl-6 max-md:py-2">
                     <div className="flex flex-col gap-2 max-md:gap-1.5 w-full min-w-0 max-md:min-h-[58px] max-md:justify-center">
                       <div className="flex items-center justify-between gap-4 max-md:gap-5 w-full max-md:flex-col max-md:items-start max-md:gap-0">
-                        <span className="font-display font-bold text-game-secondary shrink-0 text-sm">{mode === 'pvp' ? 'Gegner' : 'KI'}</span>
+                        <span className={`font-display font-bold shrink-0 text-sm ${oppLabelColor}`}>{mode === 'pvp' ? 'Gegner' : 'KI'}</span>
                         <span className="font-display font-bold text-lg max-md:text-base text-game-accent text-right shrink-0 tabular-nums max-md:text-left">{oppPts} <span className="text-xs font-semibold text-game-text-muted">Pkt.</span></span>
                       </div>
                       <div className="flex gap-1.5 max-md:gap-1 max-md:justify-start justify-center flex-wrap min-h-[10px] mt-2 md:mt-0 max-md:mt-1 max-md:mb-2 flex-shrink-0">
@@ -402,7 +421,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   leftScoreSlot={
                     <div className="flex flex-col gap-3 w-full shrink-0">
                       <div className="flex items-center justify-between gap-2 w-full">
-                        <span className="font-display font-bold text-game-primary shrink-0 text-sm">Du</span>
+                        <span className={`font-display font-bold shrink-0 text-sm ${myLabelColor}`}>Du</span>
                         <span className="font-display font-bold text-base text-game-accent text-right shrink-0">{myPts} <span className="text-xs font-semibold text-game-text-muted">Punkte</span></span>
                       </div>
                       <div className="flex gap-1.5 justify-start flex-wrap min-h-[10px] flex-shrink-0">
@@ -418,7 +437,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   rightScoreSlot={
                     <div className="flex flex-col gap-3 w-full shrink-0">
                       <div className="flex items-center justify-between gap-2 w-full">
-                        <span className="font-display font-bold text-game-secondary shrink-0 text-sm">{mode === 'pvp' ? 'Gegner' : 'KI'}</span>
+                        <span className={`font-display font-bold shrink-0 text-sm ${oppLabelColor}`}>{mode === 'pvp' ? 'Gegner' : 'KI'}</span>
                         <span className="font-display font-bold text-base text-game-accent text-right shrink-0">{oppPts} <span className="text-xs font-semibold text-game-text-muted">Punkte</span></span>
                       </div>
                       <div className="flex gap-1.5 justify-start flex-wrap min-h-[10px] flex-shrink-0">

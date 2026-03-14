@@ -43,8 +43,8 @@ npm run lint
 ## Schritt 4: Supabase — Realtime prüfen
 
 1. Im Supabase-Dashboard links **Database** → **Replication** (oder **Publications**).
-2. Prüfen, ob die Tabelle **`games`** (und ggf. **`moves`**) in der Publication **`supabase_realtime`** enthalten ist.
-3. Falls nicht: In der SQL-Datei steht am Ende ein Block, der die Tabellen hinzufügt — diesen erneut ausführen oder in der Replication-UI manuell aktivieren.
+2. Prüfen, ob die Tabellen **`games`** und **`moves`** in der Publication **`supabase_realtime`** enthalten sind. Ohne diesen Eintrag kommen PvP-Züge beim Gegner nicht live an.
+3. Falls nicht: In der SQL-Datei steht ein Block („Realtime: Live-Updates für PvP“), der die Tabellen der Publication hinzufügt — diesen erneut ausführen oder in der Replication-UI manuell aktivieren.
 
 ---
 

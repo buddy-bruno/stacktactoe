@@ -25,6 +25,7 @@ type Room = {
   created_by: string | null;
   variant: string;
   is_public?: boolean;
+  max_members?: number;
   creator?: { display_name: string | null; username: string | null } | null;
 };
 
@@ -44,6 +45,7 @@ export default function RoomsPage() {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
+  const [memberCountByRoom, setMemberCountByRoom] = useState<Record<string, number>>({});
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -58,15 +60,12 @@ export default function RoomsPage() {
   useEffect(() => {
     if (!userId) return;
     (async () => {
-      const { data: members } = await supabase.from('room_members').select('room_id').eq('user_id', userId);
-      const memberIds = members?.map((m) => m.room_id) ?? [];
+      const { data: myMembers } = await supabase.from('room_members').select('room_id').eq('user_id', userId);
+      const myIds = myMembers?.map((m) => m.room_id) ?? [];
 
-      const orParts = ['is_public.eq.true'];
-      if (memberIds.length) orParts.push(`id.in.(${memberIds.join(',')})`);
       const { data: roomList } = await supabase
         .from('rooms')
-        .select('id, name, invite_code, created_by, variant, is_public, profiles(display_name, username)')
-        .or(orParts.join(','))
+        .select('id, name, invite_code, created_by, variant, is_public, max_members, profiles(display_name, username)')
         .order('variant')
         .order('name');
 
@@ -77,10 +76,23 @@ export default function RoomsPage() {
         created_by: r.created_by as string | null,
         variant: (r.variant as string) || 'classic',
         is_public: r.is_public as boolean | undefined,
+        max_members: (r.max_members as number) ?? 20,
         creator: (r.profiles ?? r.creator) as Room['creator'],
       }));
       setAllRooms(roomsWithCreator);
-      setMyRoomIds(new Set(memberIds));
+      setMyRoomIds(new Set(myIds));
+
+      const roomIds = roomsWithCreator.map((ro) => ro.id);
+      if (roomIds.length > 0) {
+        const { data: allMembers } = await supabase.from('room_members').select('room_id').in('room_id', roomIds);
+        const countByRoom: Record<string, number> = {};
+        for (const rid of roomIds) countByRoom[rid] = 0;
+        for (const m of allMembers ?? []) {
+          const id = (m as { room_id: string }).room_id;
+          if (id in countByRoom) countByRoom[id] += 1;
+        }
+        setMemberCountByRoom(countByRoom);
+      }
       setLoading(false);
     })();
   }, [userId]);
@@ -187,7 +199,7 @@ export default function RoomsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-game-text">Räume nach Spielmodus</CardTitle>
-            <CardDescription className="text-game-text-muted">Öffentliche Räume und deine Räume, gruppiert nach Modus.</CardDescription>
+            <CardDescription className="text-game-text-muted">Alle Räume von allen Nutzern, gruppiert nach Spielmodus. Anzeige: Mitglieder (z. B. 1/20 = einer drin, max. 20).</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -207,6 +219,7 @@ export default function RoomsPage() {
                           return (
                             <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-game-border bg-game-bg-subtle/40 p-2">
                               <span className="font-medium text-game-text flex-1 min-w-0 truncate">{r.name}</span>
+                              <span className="text-xs text-game-text-muted tabular-nums">{memberCountByRoom[r.id] ?? 0}/{r.max_members ?? 20}</span>
                               {creatorName && <span className="text-xs text-game-text-muted">@{r.creator?.username ?? creatorName}</span>}
                               <span className="text-xs text-game-text-muted">{VARIANT_LABELS[r.variant as keyof typeof VARIANT_LABELS] ?? r.variant}</span>
                               {isMember ? (
@@ -301,6 +314,7 @@ export default function RoomsPage() {
                     <Link href={'/room/' + r.id}>
                       <Button variant="outline" className="w-full justify-start border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
                         <span className="flex-1 text-left truncate">{r.name}</span>
+                        <span className="text-xs text-game-text-muted shrink-0 ml-2 tabular-nums">{memberCountByRoom[r.id] ?? 0}/{r.max_members ?? 20}</span>
                         <span className="text-xs text-game-text-muted shrink-0 ml-2">{VARIANT_LABELS[r.variant as keyof typeof VARIANT_LABELS] ?? r.variant}</span>
                       </Button>
                     </Link>
@@ -308,6 +322,25 @@ export default function RoomsPage() {
                 ))}
               </ul>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-game-accent/20">
+          <CardHeader>
+            <CardTitle className="font-display text-game-text">Schnell spielen</CardTitle>
+            <CardDescription className="text-game-text-muted">Ohne Raum direkt einen Gegner finden.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row gap-3">
+            <Link href="/lobby" className="flex-1">
+              <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
+                Schnell-Suche
+              </Button>
+            </Link>
+            <Link href="/lobby" className="flex-1">
+              <Button className="w-full bg-game-accent/20 border-game-accent/30 text-game-accent hover:bg-game-accent/30">
+                Roulette
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </main>

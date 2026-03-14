@@ -40,6 +40,7 @@ function LobbyContent() {
 
   const [authReady, setAuthReady] = useState(false);
   const [searchingUserId, setSearchingUserId] = useState<string | null>(null);
+  const [activePvpGame, setActivePvpGame] = useState<{ id: string; variant: string } | null>(null);
   const matchmakingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const rouletteSessionRef = useRef<RouletteSession | null>(null);
 
@@ -56,6 +57,30 @@ function LobbyContent() {
       setAuthReady(true);
     }).catch(() => router.replace('/zugang?redirect=/lobby'));
   }, [router]);
+
+  // Rejoin: Laufendes PvP-Spiel laden (für Banner „Weiterspielen“).
+  useEffect(() => {
+    if (!authReady) return;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: rows } = await supabase.rpc('get_my_active_pvp_game', { p_user_id: user.id });
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (!row?.id) {
+        setActivePvpGame(null);
+        return;
+      }
+      let variant = 'classic';
+      try {
+        const stored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('stacktactoe_active_pvp') : null;
+        const parsed = stored ? (JSON.parse(stored) as { gameId?: string; variant?: string }) : null;
+        if (parsed?.gameId === row.id && parsed?.variant) variant = parsed.variant;
+      } catch {
+        // ignore
+      }
+      setActivePvpGame({ id: row.id, variant });
+    })();
+  }, [authReady]);
 
   const leaveQueue = useCallback(async () => {
     await supabase.rpc('leave_matchmaking_queue');
@@ -302,6 +327,18 @@ function LobbyContent() {
   return (
     <PageShell backHref="/" header={<AppHeader title="Lobby" showRanking showAuth />}>
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
+        {activePvpGame && (
+          <Card className="border-game-primary/30 bg-game-primary/5">
+            <CardContent className="pt-6">
+              <p className="text-game-text font-medium mb-3">Du hast ein laufendes Spiel.</p>
+              <Link href={`/game/${activePvpGame.variant}?mode=pvp&id=${activePvpGame.id}`}>
+                <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
+                  Weiterspielen
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
         <Card className="border-game-accent/20">
           <CardHeader>
             <CardTitle className="font-display text-game-text">Schnell-Suche</CardTitle>

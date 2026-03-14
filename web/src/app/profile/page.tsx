@@ -215,8 +215,7 @@ export default function ProfilePage() {
                     />
                     <div>
                       <p className="font-display font-bold text-game-text">{displayName}</p>
-                      <p className="text-xs text-game-text-muted">@{profile?.username}</p>
-                      <p className="text-xs text-game-text-muted">{email ?? '—'}</p>
+                      <p className="text-xs text-game-text-muted mt-0.5">{email ?? '—'}</p>
                     </div>
                   </div>
                   <Button

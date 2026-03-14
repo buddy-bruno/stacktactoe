@@ -39,7 +39,7 @@ alter publication supabase_realtime add table public.games;
 alter publication supabase_realtime add table public.moves;
 ```
 
-Falls du hier eine Meldung wie „already member of publication“ bekommst, ist alles in Ordnung. Sonst in Supabase: **Database → Replication** prüfen, ob **games** (und ggf. **moves**) für **Supabase Realtime** aktiviert sind.
+Falls du hier eine Meldung wie „already member of publication“ bekommst, ist alles in Ordnung. Sonst in Supabase unter **Database → Replication** prüfen, dass **games** und **moves** in der Publication **supabase_realtime** gelistet sind; ohne diese Einträge kommen PvP-Live-Updates nicht an.
 
 ---
 

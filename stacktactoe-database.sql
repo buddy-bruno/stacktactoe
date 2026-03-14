@@ -459,6 +459,25 @@ begin
   end if;
 end $$;
 
+-- Replica Identity: für Realtime DELETE-Events (optional; UPDATE funktioniert auch ohne).
+alter table public.games replica identity full;
+
+-- RPC: Laufendes PvP-Spiel des Nutzers (für Rejoin-Banner auf Lobby/Play).
+create or replace function public.get_my_active_pvp_game(p_user_id uuid)
+returns table (id uuid, updated_at timestamptz)
+language sql
+security definer
+set search_path = public
+as $$
+  select g.id, g.updated_at
+  from public.games g
+  where (g.player1_id = p_user_id or g.player2_id = p_user_id)
+    and g.status = 'active'
+    and g.mode = 'pvp'
+  order by g.updated_at desc
+  limit 1;
+$$;
+
 -- ─── ROOMS (Phase 5) ─────────────────────────────
 create table if not exists public.rooms (
   id           uuid primary key default gen_random_uuid(),
