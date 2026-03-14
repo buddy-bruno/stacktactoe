@@ -82,6 +82,7 @@ export function useGameState(
   const pvpPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pvpApplyRemoteRef = useRef<() => void | Promise<void>>(() => {});
   const lastAppliedUpdatedAtRef = useRef<string | null>(null);
+  const roundResultsRef = useRef(roundResults);
   const roundRef = useRef(round);
   const lockedRef = useRef(locked);
   const blitzTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,8 +122,9 @@ export function useGameState(
   }, [stt]);
   useEffect(() => {
     roundRef.current = round;
+    roundResultsRef.current = roundResults;
     lockedRef.current = locked;
-  }, [round, locked]);
+  }, [round, roundResults, locked]);
 
   useEffect(() => {
     aiRef.current = new AI(difficulty);
@@ -198,6 +200,7 @@ export function useGameState(
 
   const commitHumanMove = useCallback(
     (move: Move, toIndex: number) => {
+      if (mode === 'pvp' && locked) return false;
       const nextStt = stt.clone();
       const ok = move.type === 'place' ? nextStt.place(mySide, move.size, move.index, move.fromPool) : nextStt.move(mySide, move.fromIndex, move.toIndex);
       if (!ok) return false;
@@ -239,7 +242,7 @@ export function useGameState(
       }
       return true;
     },
-    [stt, sc, round, roundResults, mySide, finishRound, triggerCapture, mode, gameId, userId, myRole]
+    [stt, sc, round, roundResults, mySide, finishRound, triggerCapture, mode, gameId, userId, myRole, locked]
   );
 
   const runAiTurn = useCallback(() => {
@@ -390,7 +393,8 @@ export function useGameState(
         const curLocked = lockedRef.current;
         const serverUpdatedAt = row.updated_at as string | undefined;
         const serverNewer = serverUpdatedAt != null && serverUpdatedAt !== lastAppliedUpdatedAtRef.current;
-        const shouldApply = serverNewer || curLocked || parsed.round > curRound;
+        const roundResultsAhead = parsed.roundResults.length > roundResultsRef.current.length;
+        const shouldApply = serverNewer || curLocked || parsed.round > curRound || roundResultsAhead;
         if (!shouldApply) return;
         lastAppliedUpdatedAtRef.current = serverUpdatedAt ?? null;
         const prev = sttRef.current;

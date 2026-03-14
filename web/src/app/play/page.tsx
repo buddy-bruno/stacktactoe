@@ -83,7 +83,8 @@ function PlayContent() {
                   variant="outline"
                   className="shrink-0 border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text"
                   onClick={async () => {
-                    await supabase.from('games').update({ status: 'abandoned' }).eq('id', activePvpGame.id);
+                    const { error: err } = await supabase.from('games').update({ status: 'abandoned' }).eq('id', activePvpGame.id);
+                    if (err) return;
                     try {
                       if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
                     } catch {}

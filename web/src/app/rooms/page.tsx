@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PageShell } from '@/components/layout/PageShell';
@@ -57,45 +57,74 @@ export default function RoomsPage() {
     }).catch(() => router.replace('/zugang?redirect=/rooms'));
   }, [router]);
 
+  const fetchRooms = useCallback(async () => {
+    if (!userId) return;
+    const { data: myMembers } = await supabase.from('room_members').select('room_id').eq('user_id', userId);
+    const myIds = myMembers?.map((m) => m.room_id) ?? [];
+
+    const { data: roomList } = await supabase
+      .from('rooms')
+      .select('id, name, invite_code, created_by, variant, is_public, max_members, profiles(display_name, username)')
+      .order('variant')
+      .order('name');
+
+    const roomsWithCreator = (roomList ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      name: r.name as string,
+      invite_code: r.invite_code as string | null,
+      created_by: r.created_by as string | null,
+      variant: (r.variant as string) || 'classic',
+      is_public: r.is_public as boolean | undefined,
+      max_members: (r.max_members as number) ?? 20,
+      creator: (r.profiles ?? r.creator) as Room['creator'],
+    }));
+    setAllRooms(roomsWithCreator);
+    setMyRoomIds(new Set(myIds));
+
+    const roomIds = roomsWithCreator.map((ro) => ro.id);
+    if (roomIds.length > 0) {
+      const { data: allMembers } = await supabase.from('room_members').select('room_id').in('room_id', roomIds);
+      const countByRoom: Record<string, number> = {};
+      for (const rid of roomIds) countByRoom[rid] = 0;
+      for (const m of allMembers ?? []) {
+        const id = (m as { room_id: string }).room_id;
+        if (id in countByRoom) countByRoom[id] += 1;
+      }
+      setMemberCountByRoom(countByRoom);
+    }
+    setLoading(false);
+  }, [userId]);
+
   useEffect(() => {
     if (!userId) return;
-    (async () => {
-      const { data: myMembers } = await supabase.from('room_members').select('room_id').eq('user_id', userId);
-      const myIds = myMembers?.map((m) => m.room_id) ?? [];
+    const t = setTimeout(() => { void fetchRooms(); }, 0);
+    return () => clearTimeout(t);
+  }, [userId, fetchRooms]);
 
-      const { data: roomList } = await supabase
-        .from('rooms')
-        .select('id, name, invite_code, created_by, variant, is_public, max_members, profiles(display_name, username)')
-        .order('variant')
-        .order('name');
-
-      const roomsWithCreator = (roomList ?? []).map((r: Record<string, unknown>) => ({
-        id: r.id as string,
-        name: r.name as string,
-        invite_code: r.invite_code as string | null,
-        created_by: r.created_by as string | null,
-        variant: (r.variant as string) || 'classic',
-        is_public: r.is_public as boolean | undefined,
-        max_members: (r.max_members as number) ?? 20,
-        creator: (r.profiles ?? r.creator) as Room['creator'],
-      }));
-      setAllRooms(roomsWithCreator);
-      setMyRoomIds(new Set(myIds));
-
-      const roomIds = roomsWithCreator.map((ro) => ro.id);
-      if (roomIds.length > 0) {
-        const { data: allMembers } = await supabase.from('room_members').select('room_id').in('room_id', roomIds);
-        const countByRoom: Record<string, number> = {};
-        for (const rid of roomIds) countByRoom[rid] = 0;
-        for (const m of allMembers ?? []) {
-          const id = (m as { room_id: string }).room_id;
-          if (id in countByRoom) countByRoom[id] += 1;
-        }
-        setMemberCountByRoom(countByRoom);
-      }
-      setLoading(false);
-    })();
-  }, [userId]);
+  useEffect(() => {
+    if (!userId) return;
+    let debounceId: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefetch = () => {
+      if (debounceId) clearTimeout(debounceId);
+      debounceId = setTimeout(() => {
+        debounceId = null;
+        void fetchRooms();
+      }, 300);
+    };
+    const channel = supabase.channel('rooms-list')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rooms' }, scheduleRefetch)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms' }, scheduleRefetch)
+      .subscribe();
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') void fetchRooms();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      if (debounceId) clearTimeout(debounceId);
+      supabase.removeChannel(channel);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [userId, fetchRooms]);
 
   const myRooms = useMemo(() => allRooms.filter((r) => myRoomIds.has(r.id)), [allRooms, myRoomIds]);
   const roomsByVariant = useMemo(() => {

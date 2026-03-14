@@ -397,7 +397,11 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   className="shrink-0 border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text"
                   onClick={async () => {
                     if (!gameId) return;
-                    await supabase.from('games').update({ status: 'abandoned' }).eq('id', gameId);
+                    const { error: err } = await supabase.from('games').update({ status: 'abandoned' }).eq('id', gameId);
+                    if (err) {
+                      toast('Spiel konnte nicht beendet werden.');
+                      return;
+                    }
                     try {
                       if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
                     } catch {}
@@ -449,7 +453,11 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                 size="sm"
                 className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text text-xs font-medium"
                 onClick={async () => {
-                  await supabase.from('games').update({ status: 'abandoned' }).eq('id', gameId).then(() => {});
+                  const { error: err } = await supabase.from('games').update({ status: 'abandoned' }).eq('id', gameId);
+                  if (err) {
+                    toast('Spiel konnte nicht beendet werden.');
+                    return;
+                  }
                   try {
                     if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
                   } catch {}
