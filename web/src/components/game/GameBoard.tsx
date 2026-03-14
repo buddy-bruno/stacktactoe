@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PieceSvg } from './PieceSvg';
 import type { STT } from '@/lib/game/stt';
-import type { Move, Player, PieceSize } from '@/lib/game/stt';
+import type { Move, Player, PieceSize, PoolSide } from '@/lib/game/stt';
 
 const SN: Record<PieceSize, string> = { small: 'Bauer', medium: 'Dame', large: 'König' };
 
@@ -45,7 +45,7 @@ function PieceDockAside({
 }
 
 type DragState = 
-  | { type: 'reserve'; size: PieceSize; clientX: number; clientY: number }
+  | { type: 'reserve'; size: PieceSize; fromPool: PoolSide; clientX: number; clientY: number }
   | { type: 'board'; fromIndex: number; size: PieceSize; clientX: number; clientY: number };
 
 interface GameBoardProps {
@@ -74,9 +74,11 @@ interface GameBoardProps {
   billboardSlot?: React.ReactNode;
   /** Schach-Modus: true = Ziehen vom Brett erlauben (strikt getrennt von Classic). Fehlt/undefined = nur aus stt.placementOnly (z. B. PvP/Puzzle). */
   allowMovePieces?: boolean;
+  /** Pool-Modus: gemeinsamer Vorrat links und rechts, neutrale Figurenfarben, Entnahme von beiden Seiten. */
+  poolMode?: boolean;
 }
 
-export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell = null, lastUsedPieceSize = null, leftColumn, rightColumn, centerTop, opponentLabel = 'Gegner', leftScoreSlot, rightScoreSlot, billboardSlot, allowMovePieces }: GameBoardProps) {
+export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell = null, lastUsedPieceSize = null, leftColumn, rightColumn, centerTop, opponentLabel = 'Gegner', leftScoreSlot, rightScoreSlot, billboardSlot, allowMovePieces, poolMode }: GameBoardProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hoverCell, setHoverCell] = useState<number | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -98,7 +100,7 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     if (!drag) return;
     if (validDrop && hoverCell !== null) {
       if (drag.type === 'reserve') {
-        onMove({ type: 'place', player: mySide, size: drag.size, index: hoverCell }, hoverCell);
+        onMove({ type: 'place', player: mySide, size: drag.size, index: hoverCell, fromPool: drag.fromPool }, hoverCell);
       } else {
         onMove({ type: 'move', player: mySide, fromIndex: drag.fromIndex, toIndex: hoverCell, size: drag.size }, hoverCell);
       }
@@ -137,10 +139,19 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     };
   }, [drag, handlePointerMove, handlePointerUp]);
 
-  const startDragReserve = (size: PieceSize, e: React.PointerEvent) => {
-    if (!myTurn || locked || stt.over || stt.phase !== 'placement' || stt.res[mySide][size] <= 0) return;
+  const poolModeWithSides = poolMode && (stt.poolLeft != null && stt.poolRight != null);
+  const pool = poolMode && !poolModeWithSides && stt.pool ? stt.pool : null;
+  const reserveCount = (size: PieceSize, side?: PoolSide) =>
+    poolModeWithSides && side != null ? stt.poolCount(side, size) : pool ? (pool[size] ?? 0) : stt.res[mySide][size];
+  const canDragFromReserve = (size: PieceSize, side: PoolSide) =>
+    (poolModeWithSides ? reserveCount(size, side) : reserveCount(size)) > 0 && (stt.placementOnly ? stt.phase === 'placement' : true) && myTurn && !stt.over;
+
+  const startDragReserve = (size: PieceSize, fromPool: PoolSide, e: React.PointerEvent) => {
+    const cnt = poolModeWithSides ? reserveCount(size, fromPool) : reserveCount(size);
+    if (!myTurn || locked || stt.over || (poolMode ? stt.phase !== 'placement' : false) || cnt <= 0) return;
+    if (!poolMode && stt.phase !== 'placement') return;
     e.preventDefault();
-    setDrag({ type: 'reserve', size, clientX: e.clientX, clientY: e.clientY });
+    setDrag({ type: 'reserve', size, fromPool, clientX: e.clientX, clientY: e.clientY });
   };
 
   const startDragBoard = (fromIndex: number, size: PieceSize, e: React.PointerEvent) => {
@@ -151,34 +162,40 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
 
   const oppSide: Player = mySide === 'human' ? 'ai' : 'human';
 
+  const poolSlot = (size: PieceSize, side: PoolSide) => {
+    const cnt = poolModeWithSides ? reserveCount(size, side) : reserveCount(size);
+    const canUse = poolModeWithSides ? canDragFromReserve(size, side) : canDragFromReserve(size, side);
+    const justUsed = !poolModeWithSides && !pool && side === 'right' && size === lastUsedPieceSize;
+    return (
+      <div
+        key={side === 'left' ? size : `${size}-R`}
+        className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 md:p-4 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${cnt <= 0 ? 'opacity-30' : ''}`}
+        onPointerDown={canUse ? (e) => startDragReserve(size, side, e) : undefined}
+      >
+        <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
+          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size && (!poolModeWithSides || drag.fromPool === side) ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
+            {(pool || poolModeWithSides) ? <PieceSvg player={mySide} size={size} variant="neutral" className="w-full h-full" /> : <PieceSvg player={side === 'left' ? mySide : oppSide} size={size} className="w-full h-full" />}
+          </div>
+        </div>
+        <div className="dock-slot-labels flex flex-col max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
+          <span className="text-sm font-semibold text-game-text mt-2 max-md:mt-1">{SN[size]}</span>
+          <span className="font-display text-sm font-bold text-game-accent max-md:mt-0">×{cnt}</span>
+        </div>
+      </div>
+    );
+  };
+
   const dockSlots = (
       <div className="grid grid-cols-3 md:grid-cols-1 gap-3 sm:gap-4 md:gap-5 w-full max-md:max-w-none max-w-2xl md:max-w-none">
-        {(['small', 'medium', 'large'] as const).map((size) => {
-          const cnt = stt.res[mySide][size];
-          /** Classic: nur in Placement-Phase setzen. Schach: setzen erlauben, solange Vorrat da (pro Zug Setzen ODER Bewegen, §5 SPIELMODI-SCHACH). */
-          const canUse = cnt > 0 && (stt.placementOnly ? stt.phase === 'placement' : true) && myTurn && !stt.over;
-          return (
-            <div
-              key={size}
-              className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 md:p-4 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${cnt <= 0 ? 'opacity-30' : ''}`}
-              onPointerDown={canUse ? (e) => startDragReserve(size, e) : undefined}
-            >
-              <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
-                <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size ? 'opacity-10' : ''}`} style={pieceSizeStyle(size)}>
-                  <PieceSvg player={mySide} size={size} className="w-full h-full" />
-                </div>
-              </div>
-              <div className="dock-slot-labels flex flex-col max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
-                <span className="text-sm font-semibold text-game-text mt-2 max-md:mt-1">{SN[size]}</span>
-                <span className="font-display text-sm font-bold text-game-accent max-md:mt-0">×{cnt}</span>
-              </div>
-            </div>
-          );
-        })}
+        {(['small', 'medium', 'large'] as const).map((size) => poolSlot(size, 'left'))}
       </div>
     );
 
-  const opponentDockSlots = (
+  const opponentDockSlots = poolMode ? (
+      <div className="grid grid-cols-3 md:grid-cols-1 gap-3 sm:gap-4 md:gap-5 w-full max-md:max-w-none max-w-2xl md:max-w-none">
+        {(['small', 'medium', 'large'] as const).map((size) => poolSlot(size, 'right'))}
+      </div>
+    ) : (
       <div className="grid grid-cols-1 gap-4 sm:gap-5 w-full">
         {(['small', 'medium', 'large'] as const).map((size) => {
           const cnt = stt.res[oppSide][size];
@@ -226,8 +243,8 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
         {/* Board-Bereich: Mobile flex-1 + min-h-0 damit Brett sichtbar, Desktop unverändert */}
         <div className="w-full flex-1 min-h-0 flex flex-col overflow-auto md:overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-stretch md:justify-between md:gap-4 w-full flex-1 min-h-0 justify-center items-center md:items-stretch min-h-0">
-        {/* Desktop: links — Figurenleiste */}
-        <PieceDockAside variant="human" title="Deine Figuren" order={1} scoreSlot={leftScoreSlot}>
+        {/* Desktop: links — Figurenleiste oder Pool */}
+        <PieceDockAside variant="human" title={poolMode ? 'Pool' : 'Deine Figuren'} order={1} scoreSlot={leftScoreSlot}>
           {dockSlots}
         </PieceDockAside>
 
@@ -298,8 +315,8 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
           </div>
         </div>
 
-        {/* Desktop: rechts — nur Figurenleiste (Score im Billboard) */}
-        <PieceDockAside variant="opponent" title={`${opponentLabel} Figuren`} order={3} scoreSlot={rightScoreSlot}>
+        {/* Desktop: rechts — Figurenleiste oder Pool */}
+        <PieceDockAside variant="opponent" title={poolMode ? 'Pool' : `${opponentLabel} Figuren`} order={3} scoreSlot={rightScoreSlot}>
           {opponentDockSlots}
         </PieceDockAside>
 
@@ -332,7 +349,7 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
               filter: validDrop ? 'none' : 'var(--game-fig-drop-shadow)',
             }}
           >
-            <PieceSvg player={mySide} size={drag.size} className="w-full h-full" />
+            <PieceSvg player={mySide} size={drag.size} variant={poolMode ? 'neutral' : undefined} className="w-full h-full" />
           </div>
         </div>,
         document.body

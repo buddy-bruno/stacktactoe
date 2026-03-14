@@ -73,6 +73,7 @@
   --color-game-mode-daily: var(--game-mode-daily);
   --color-game-mode-puzzle: var(--game-mode-puzzle);
   --color-game-mode-blitz: var(--game-mode-blitz);
+  --color-game-mode-pool: var(--game-mode-pool);
   --radius-game-card: var(--game-radius-card);
   --radius-game-button: var(--game-radius-button);
   --shadow-game-card: var(--game-shadow-card);
@@ -196,6 +197,7 @@
   --game-mode-daily: var(--game-accent);
   --game-mode-puzzle: var(--game-success);
   --game-mode-blitz: var(--game-danger);
+  --game-mode-pool: var(--game-accent);
   --game-board-bg: linear-gradient(168deg, #121c2e 0%, #0d1525 45%, #090f1c 100%);
   --game-board-border: 1px solid var(--game-border-soft);
   --game-board-shadow: 0 4px 0 rgba(0,0,0,0.2), 0 8px 24px rgba(0, 0, 0, 0.5);

@@ -129,6 +129,9 @@ create index if not exists idx_matchmaking_queue_type on public.matchmaking_queu
 create index if not exists idx_matchmaking_queue_joined on public.matchmaking_queue(joined_at);
 
 alter table public.matchmaking_queue enable row level security;
+drop policy if exists "matchmaking_own_insert" on public.matchmaking_queue;
+drop policy if exists "matchmaking_own_delete" on public.matchmaking_queue;
+drop policy if exists "matchmaking_select"    on public.matchmaking_queue;
 create policy "matchmaking_own_insert" on public.matchmaking_queue for insert with check (auth.uid() = user_id);
 create policy "matchmaking_own_delete" on public.matchmaking_queue for delete using (auth.uid() = user_id);
 create policy "matchmaking_select"    on public.matchmaking_queue for select using (true);
@@ -139,23 +142,30 @@ alter table public.games    enable row level security;
 alter table public.moves    enable row level security;
 
 -- profiles: public read, own write
+drop policy if exists "profiles_public_read"  on public.profiles;
+drop policy if exists "profiles_own_insert"   on public.profiles;
+drop policy if exists "profiles_own_update"   on public.profiles;
 create policy "profiles_public_read"  on public.profiles for select using (true);
 create policy "profiles_own_insert"   on public.profiles for insert with check (auth.uid() = id);
 create policy "profiles_own_update"   on public.profiles for update using (auth.uid() = id);
 
 -- games: public read, authenticated insert; update nur für Spieler oder Beitritt als Player2
+drop policy if exists "games_public_read"     on public.games;
+drop policy if exists "games_auth_insert"     on public.games;
+drop policy if exists "games_player_update"   on public.games;
+drop policy if exists "games_join_as_player2" on public.games;
 create policy "games_public_read"     on public.games for select using (true);
 create policy "games_auth_insert"     on public.games for insert with check (auth.uid() is not null);
 create policy "games_player_update"   on public.games for update using (
   auth.uid() = player1_id or auth.uid() = player2_id
 );
--- Beitreten per Code: Eingeloggter User darf wartendes Spiel updaten (setzt sich als player2)
-drop policy if exists "games_join_as_player2" on public.games;
 create policy "games_join_as_player2" on public.games for update using (
   status = 'waiting' and player2_id is null and auth.uid() is not null and auth.uid() != player1_id
 );
 
 -- moves: public read, authenticated insert
+drop policy if exists "moves_public_read"     on public.moves;
+drop policy if exists "moves_auth_insert"     on public.moves;
 create policy "moves_public_read"     on public.moves for select using (true);
 create policy "moves_auth_insert"     on public.moves for insert with check (auth.uid() is not null);
 
@@ -203,8 +213,10 @@ returns trigger language plpgsql as $$
 begin new.updated_at = now(); return new; end;
 $$;
 
+drop trigger if exists profiles_updated_at on public.profiles;
 create trigger profiles_updated_at before update on public.profiles
   for each row execute function public.set_updated_at();
+drop trigger if exists games_updated_at on public.games;
 create trigger games_updated_at before update on public.games
   for each row execute function public.set_updated_at();
 
@@ -380,6 +392,9 @@ create index if not exists idx_daily_scores_date on public.daily_scores(challeng
 create index if not exists idx_daily_scores_pts on public.daily_scores(challenge_date, points desc);
 
 alter table public.daily_scores enable row level security;
+drop policy if exists "daily_scores_read"  on public.daily_scores;
+drop policy if exists "daily_scores_insert" on public.daily_scores;
+drop policy if exists "daily_scores_update" on public.daily_scores;
 create policy "daily_scores_read"  on public.daily_scores for select using (true);
 create policy "daily_scores_insert" on public.daily_scores for insert with check (auth.uid() = user_id);
 create policy "daily_scores_update" on public.daily_scores for update using (auth.uid() = user_id);
@@ -421,6 +436,7 @@ create table if not exists public.puzzles (
 create index if not exists idx_puzzles_difficulty on public.puzzles(difficulty);
 
 alter table public.puzzles enable row level security;
+drop policy if exists "puzzles_read" on public.puzzles;
 create policy "puzzles_read" on public.puzzles for select using (true);
 
 -- Beispiel-Puzzle (einmalig ausführen): Human setzt Medium auf 4 = drei in einer Reihe
@@ -467,10 +483,16 @@ create index if not exists idx_room_members_user on public.room_members(user_id)
 alter table public.rooms enable row level security;
 alter table public.room_members enable row level security;
 
+drop policy if exists "rooms_select" on public.rooms;
+drop policy if exists "rooms_insert" on public.rooms;
+drop policy if exists "rooms_update" on public.rooms;
 create policy "rooms_select" on public.rooms for select using (true);
 create policy "rooms_insert" on public.rooms for insert with check (auth.uid() is not null);
 create policy "rooms_update" on public.rooms for update using (auth.uid() = created_by);
 
+drop policy if exists "room_members_select" on public.room_members;
+drop policy if exists "room_members_insert" on public.room_members;
+drop policy if exists "room_members_delete" on public.room_members;
 create policy "room_members_select" on public.room_members for select using (true);
 create policy "room_members_insert" on public.room_members for insert with check (auth.uid() = user_id);
 create policy "room_members_delete" on public.room_members for delete using (auth.uid() = user_id or exists (select 1 from public.rooms r where r.id = room_id and r.created_by = auth.uid()));
@@ -522,14 +544,22 @@ alter table public.tournaments enable row level security;
 alter table public.tournament_participants enable row level security;
 alter table public.tournament_matches enable row level security;
 
+drop policy if exists "tournaments_select" on public.tournaments;
+drop policy if exists "tournaments_insert" on public.tournaments;
+drop policy if exists "tournaments_update" on public.tournaments;
 create policy "tournaments_select" on public.tournaments for select using (true);
 create policy "tournaments_insert" on public.tournaments for insert with check (auth.uid() is not null);
 create policy "tournaments_update" on public.tournaments for update using (auth.uid() = created_by);
 
+drop policy if exists "tournament_participants_select" on public.tournament_participants;
+drop policy if exists "tournament_participants_insert" on public.tournament_participants;
+drop policy if exists "tournament_participants_delete" on public.tournament_participants;
 create policy "tournament_participants_select" on public.tournament_participants for select using (true);
 create policy "tournament_participants_insert" on public.tournament_participants for insert with check (auth.uid() = user_id);
 create policy "tournament_participants_delete" on public.tournament_participants for delete using (auth.uid() = user_id or exists (select 1 from public.tournaments t where t.id = tournament_id and t.created_by = auth.uid()));
 
+drop policy if exists "tournament_matches_select" on public.tournament_matches;
+drop policy if exists "tournament_matches_all" on public.tournament_matches;
 create policy "tournament_matches_select" on public.tournament_matches for select using (true);
 create policy "tournament_matches_all" on public.tournament_matches for all using (exists (select 1 from public.tournaments t where t.id = tournament_id and (t.created_by = auth.uid() or auth.uid() in (select user_id from public.tournament_participants where tournament_id = t.id))));
 

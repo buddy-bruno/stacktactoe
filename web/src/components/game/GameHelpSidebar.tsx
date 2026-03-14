@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-export type HelpVariant = 'classic' | 'schach' | 'blitz';
+export type HelpVariant = 'classic' | 'schach' | 'blitz' | 'pool';
 
 const VARIANT_TITLE: Record<HelpVariant, string> = {
   classic: 'Classic',
   schach: 'Schach',
   blitz: 'Blitz',
+  pool: 'Pool',
 };
 
 interface GameHelpSidebarProps {
@@ -20,9 +21,16 @@ interface GameHelpSidebarProps {
 
 export function GameHelpSidebar({ open, onClose, gameVariant = 'classic' }: GameHelpSidebarProps) {
   const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(false);
   useEffect(() => {
     if (open) {
-      setMounted(true);
+      queueMicrotask(() => setMounted(true));
+      const id = requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+      return () => cancelAnimationFrame(id);
+    } else {
+      queueMicrotask(() => setVisible(false));
     }
   }, [open]);
   useEffect(() => {
@@ -38,33 +46,41 @@ export function GameHelpSidebar({ open, onClose, gameVariant = 'classic' }: Game
   if (!mounted) return null;
 
   const title = VARIANT_TITLE[gameVariant];
+  const show = open && visible;
 
   return (
     <>
-      {/* z-[60] über Header (z-50), damit Backdrop auch Nav/Header blurt */}
       <div
-        className={`fixed inset-0 z-[60] bg-black/40 backdrop-blur-md md:bg-black/25 transition-opacity duration-300 ease-out ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 z-[60] bg-black/30 backdrop-blur-md transition-opacity ease-out ${show ? 'opacity-100 duration-200' : 'opacity-0 duration-0 pointer-events-none'}`}
         aria-hidden
         onClick={onClose}
       />
       <aside
-        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-md bg-game-surface border-l border-game-border shadow-xl flex flex-col transition-[transform] duration-300 ease-[cubic-bezier(0.33,1,0.68,1)] ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed z-[70] flex flex-col shadow-xl
+          transition-[transform,opacity] ease-out ${show ? 'duration-200' : 'duration-0'}
+          max-md:inset-4 max-md:rounded-3xl max-md:p-[1px] max-md:bg-gradient-to-br max-md:from-white/20 max-md:via-white/08 max-md:to-white/04
+          md:top-0 md:right-0 md:h-full md:w-full md:max-w-md md:rounded-none
+          ${show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}
         role="dialog"
         aria-label={`Anleitung ${title}`}
         onTransitionEnd={handleTransitionEnd}
       >
-        <div className="flex items-center justify-between p-4 border-b border-game-border shrink-0">
-          <h2 className="font-display font-bold text-lg text-game-text">{title}</h2>
-          <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0" aria-label="Schließen">
-            <span aria-hidden>✕</span>
-          </Button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 text-game-text text-sm">
+        <div className="flex flex-col flex-1 min-h-0 max-md:rounded-3xl md:rounded-none bg-game-surface/90 backdrop-blur-xl border border-white/10 md:border-l md:border-game-border/50 overflow-hidden">
+          <div className="flex items-center justify-between p-4 shrink-0">
+            <h2 className="font-display font-bold text-lg text-game-text">{title}</h2>
+            <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0" aria-label="Schließen">
+              <span aria-hidden>✕</span>
+            </Button>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-white/[0.06] to-transparent shrink-0" aria-hidden />
+          <div className="flex-1 overflow-y-auto p-4 space-y-6 text-game-text text-sm">
           <h3 className="font-display font-semibold text-base text-game-primary">Spielerklärung</h3>
 
           {gameVariant === 'classic' && <ClassicContent />}
           {gameVariant === 'schach' && <SchachContent />}
           {gameVariant === 'blitz' && <BlitzContent />}
+          {gameVariant === 'pool' && <PoolContent />}
+          </div>
         </div>
       </aside>
     </>
@@ -171,6 +187,43 @@ function BlitzContent() {
         <h4 className="font-display font-semibold text-game-primary mb-2">Ablauf</h4>
         <p className="text-game-text-muted">
           Pro Runde: Classic-Logik. Dein Zug: Timer sichtbar; Ablauf → du verlierst die Runde. KI-Zug: 5 s Frist; zieht die KI nicht rechtzeitig → du gewinnst die Runde. 5 Siege = Match gewonnen.
+        </p>
+      </section>
+    </>
+  );
+}
+
+function PoolContent() {
+  return (
+    <>
+      <section>
+        <h4 className="font-display font-semibold text-game-primary mb-2">Grundidee</h4>
+        <p className="text-game-text-muted">
+          Kein eigener Vorrat. Ein <strong>gemeinsamer Pool</strong>: 6 Bauern, 6 Damen, 2 Könige. Pro Zug nimmst du <strong>eine Figur aus dem Pool</strong> und setzt sie sofort auf das Brett. Die gesetzte Figur gehört danach dir.
+        </p>
+      </section>
+      <section>
+        <h4 className="font-display font-semibold text-game-primary mb-2">Material & Stärke</h4>
+        <p className="text-game-text-muted">
+          Pool: 6× Bauer (klein), 6× Dame (mittel), 2× König (groß). Rang unverändert: <strong>König &gt; Dame &gt; Bauer</strong>.
+        </p>
+      </section>
+      <section>
+        <h4 className="font-display font-semibold text-game-primary mb-2">Zugablauf</h4>
+        <p className="text-game-text-muted">
+          Figur aus dem Pool wählen (links oder rechts) und <strong>sofort regelkonform setzen</strong>: leeres Feld oder schwächere Gegnerfigur überdecken. Du darfst nur eine Figur wählen, die du in diesem Zug legal setzen kannst.
+        </p>
+      </section>
+      <section>
+        <h4 className="font-display font-semibold text-game-primary mb-2">Sieg & Unentschieden</h4>
+        <p className="text-game-text-muted">
+          Sieg: 3 eigene sichtbare Figuren in einer Reihe. Unentschieden: Pool leer ohne Sieg, oder keine Figur aus dem Pool kann legal gesetzt werden.
+        </p>
+      </section>
+      <section>
+        <h4 className="font-display font-semibold text-game-primary mb-2">Swap-Regel</h4>
+        <p className="text-game-text-muted">
+          Nach dem ersten Zug darf der zweite Spieler einmalig <strong>die Rolle tauschen</strong> (er übernimmt die Rolle des ersten Zuges). Macht den Modus ausgewogener.
         </p>
       </section>
     </>

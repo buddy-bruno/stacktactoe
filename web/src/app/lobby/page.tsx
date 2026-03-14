@@ -27,7 +27,7 @@ function LobbyContent() {
   const searchParams = useSearchParams();
   const joinFromUrl = searchParams.get('join')?.trim().toUpperCase() ?? '';
   const variant = searchParams.get('variant') || 'classic';
-  const gamePath = variant === 'schach' ? '/game/schach' : '/game/classic';
+  const gamePath = variant === 'schach' ? '/game/schach' : variant === 'pool' ? '/game/pool' : '/game/classic';
   const [inviteCode, setInviteCode] = useState('');
   const [matchmaking, setMatchmaking] = useState<'idle' | 'searching' | 'matched'>('idle');
   const [error, setError] = useState('');
@@ -210,7 +210,7 @@ function LobbyContent() {
     }
     setCreating(true);
     const code = generateInviteCode();
-    const stt = createState(variant as 'classic' | 'schach');
+    const stt = createState(variant as 'classic' | 'schach' | 'pool');
     const sc = { human: { total: 0, wins: 0, moves: 0, rnd: 0 }, ai: { total: 0, wins: 0, moves: 0, rnd: 0 } };
     const stateJson = serializeMatchState(stt, 1, [], sc);
     const { data, error: err } = await supabase
@@ -433,7 +433,7 @@ function LobbyContent() {
             <CardHeader>
               <CardTitle className="font-display text-game-text">Neue Partie erstellen</CardTitle>
               <CardDescription className="text-game-text-muted">
-                {variant === 'schach' ? 'Modus Schach (Platzieren + Bewegen). ' : ''}
+                {variant === 'schach' ? 'Modus Schach (Platzieren + Bewegen). ' : variant === 'pool' ? 'Modus Pool (gemeinsamer Vorrat). ' : ''}
                 Erstelle ein Spiel und teile den Einladungscode mit deinem Gegner.
               </CardDescription>
             </CardHeader>

@@ -54,7 +54,7 @@ export function useGameState(
   }
 ) {
   const { gameId, difficulty = 'easy', blitz, myRole = 'player1', userId, initialMatchState, gameVariant = 'classic', onRoundEnd, onMatchEnd } = options;
-  const { placementOnly } = getEngineConfig(gameVariant);
+  getEngineConfig(gameVariant);
 
   const [stt, setStt] = useState<STT>(() => {
     if (initialMatchState?.stt) return initialMatchState.stt;
@@ -107,7 +107,8 @@ export function useGameState(
     if (gameVariant !== 'schach') return;
     const current = sttRef.current;
     if (!current.placementOnly) return;
-    setStt((prev) => migrateToSchach(prev));
+    const id = setTimeout(() => setStt((prev) => migrateToSchach(prev)), 0);
+    return () => clearTimeout(id);
   }, [gameVariant, initialMatchState]);
 
   useEffect(() => {
@@ -189,7 +190,7 @@ export function useGameState(
   const commitHumanMove = useCallback(
     (move: Move, toIndex: number) => {
       const nextStt = stt.clone();
-      const ok = move.type === 'place' ? nextStt.place(mySide, move.size, move.index) : nextStt.move(mySide, move.fromIndex, move.toIndex);
+      const ok = move.type === 'place' ? nextStt.place(mySide, move.size, move.index, move.fromPool) : nextStt.move(mySide, move.fromIndex, move.toIndex);
       if (!ok) return false;
       const pts = calcPts(stt, move, mySide);
       const before = stt.top(toIndex);
@@ -287,7 +288,7 @@ export function useGameState(
       const pts = calcPts(stateNow, mv, 'ai');
       const nextStt = stateNow.clone();
       if (mv.type === 'place') {
-        nextStt.place('ai', mv.size, mv.index);
+        nextStt.place('ai', mv.size, mv.index, mv.fromPool);
         setLastUsedPieceSize(mv.size);
       } else {
         nextStt.move('ai', mv.fromIndex, mv.toIndex);
@@ -382,7 +383,7 @@ export function useGameState(
       return;
     }
     const nextRoundNum = round + 1;
-    const nextStt = createState(stt.placementOnly ? 'classic' : 'schach');
+    const nextStt = createState(gameVariant);
     const nextSc = { human: { ...sc.human, moves: 0, rnd: 0 }, ai: { ...sc.ai, moves: 0, rnd: 0 } };
     setRound(nextRoundNum);
     setStt(nextStt);
@@ -395,7 +396,7 @@ export function useGameState(
       const stateToPersist = serializeMatchState(nextStt, nextRoundNum, roundResults, nextSc);
       supabase.from('games').update({ state_json: stateToPersist }).eq('id', gameId).then(() => {});
     }
-  }, [round, sc, roundResults, mode, gameId, onMatchEnd, stt.placementOnly]);
+  }, [round, sc, roundResults, mode, gameId, onMatchEnd, gameVariant]);
 
   /** Match sofort beenden: aktuellen Stand auswerten, onMatchEnd aufrufen, Match-Dialog anzeigen. */
   const endMatchNow = useCallback(() => {
@@ -436,7 +437,7 @@ export function useGameState(
     setLastPlacedCell(null);
     setLastUsedPieceSize(null);
     setRoundReplayStates([]);
-    const nextStt = createState(stt.placementOnly ? 'classic' : 'schach');
+    const nextStt = createState(gameVariant);
     const nextSc = { human: emptyScore(), ai: emptyScore() };
     setStt(nextStt);
     setSc(nextSc);
@@ -445,7 +446,7 @@ export function useGameState(
       const stateToPersist = serializeMatchState(nextStt, 1, [], nextSc);
       supabase.from('games').update({ state_json: stateToPersist }).eq('id', gameId).then(() => {});
     }
-  }, [mode, gameId, stt.placementOnly]);
+  }, [mode, gameId, gameVariant]);
 
   const triggerBlitzTimeout = useCallback(() => {
     if (!blitz || stt.over || stt.cur !== mySide) return;
@@ -487,6 +488,34 @@ export function useGameState(
     return () => clearTimeout(t);
   }, [lastPlacedCell, lastUsedPieceSize]);
 
+  /** Pool-Modus: Nach erstem Zug anzeigen, damit zweiter Spieler Swap wählen kann. */
+  const showSwapOffer =
+    stt.isPoolMode?.() &&
+    !stt.swapApplied &&
+    stt.countPiecesOnBoardTotal?.() === 1 &&
+    stt.cur === 'ai' &&
+    !stt.over;
+
+  const applyPoolSwap = useCallback(() => {
+    const next = stt.clone();
+    next.applySwap();
+    setStt(next);
+    if (mode === 'pvp' && gameId) {
+      const stateToPersist = serializeMatchState(next, round, roundResults, sc);
+      supabase.from('games').update({ state_json: stateToPersist }).eq('id', gameId).then(() => {});
+    }
+  }, [stt, mode, gameId, round, roundResults, sc]);
+
+  const declinePoolSwap = useCallback(() => {
+    const next = stt.clone();
+    next.declineSwap();
+    setStt(next);
+    if (mode === 'pvp' && gameId) {
+      const stateToPersist = serializeMatchState(next, round, roundResults, sc);
+      supabase.from('games').update({ state_json: stateToPersist }).eq('id', gameId).then(() => {});
+    }
+  }, [stt, mode, gameId, round, roundResults, sc]);
+
   return {
     stt,
     sc,
@@ -521,5 +550,8 @@ export function useGameState(
     triggerBlitzTimeout,
     pvpSubRef,
     blitzTimerRef,
+    showSwapOffer,
+    applyPoolSwap,
+    declinePoolSwap,
   };
 }

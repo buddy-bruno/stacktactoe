@@ -8,7 +8,7 @@ import { GameHelpSidebar } from '@/components/game/GameHelpSidebar';
 
 export default function HomePage() {
   const [helpOpen, setHelpOpen] = useState(false);
-  const [helpVariant, setHelpVariant] = useState<'classic' | 'schach' | 'blitz'>('classic');
+  const [helpVariant, setHelpVariant] = useState<'classic' | 'schach' | 'blitz' | 'pool'>('classic');
 
   return (
     <>
@@ -46,6 +46,16 @@ export default function HomePage() {
               href="/play?mode=blitz"
               onAnleitungClick={() => {
                 setHelpVariant('blitz');
+                setHelpOpen(true);
+              }}
+            />
+            <ModeCard
+              mode="pool"
+              title="Pool"
+              description="Gemeinsamer Vorrat: 6B, 6D, 2K. Figur aus Pool wählen und sofort setzen."
+              href="/play?mode=pool"
+              onAnleitungClick={() => {
+                setHelpVariant('pool');
                 setHelpOpen(true);
               }}
             />

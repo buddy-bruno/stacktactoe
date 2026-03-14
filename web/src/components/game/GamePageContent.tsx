@@ -14,7 +14,6 @@ import type { Difficulty } from '@/lib/game';
 import type { Player } from '@/lib/game/stt';
 import type { MyRole } from '@/hooks/useGameState';
 import { useGameState } from '@/hooks/useGameState';
-import { createState } from '@/lib/game/engine';
 import { deserializeMatchState } from '@/lib/game/scoring';
 import { GameBoard } from '@/components/game/GameBoard';
 import { GameHelpSidebar } from '@/components/game/GameHelpSidebar';
@@ -27,7 +26,7 @@ import { supabase } from '@/lib/supabase';
 import { submitDailyScore } from '@/lib/game/daily';
 
 /** Gemeinsamer Spielinhalt – Variante kommt ausschließlich von der Route (Prop), keine Kollision mit anderen Modi. */
-export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'schach' }) {
+export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'schach' | 'pool' }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const mode = (searchParams.get('mode') || 'ai') as 'ai' | 'pvp' | 'daily';
@@ -49,6 +48,11 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
   const [helpOpen, setHelpOpen] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
   const [dailySubmitError, setDailySubmitError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null)).catch(() => setUserId(null));
@@ -198,10 +202,10 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
     };
   }, [isMainGameView]);
 
-  const gameHeaderTitle = blitz ? 'Blitz' : mode === 'daily' ? 'Daily' : gameVariant === 'schach' ? 'Schach' : 'Classic';
+  const gameHeaderTitle = blitz ? 'Blitz' : mode === 'daily' ? 'Daily' : gameVariant === 'pool' ? 'Pool' : gameVariant === 'schach' ? 'Schach' : 'Classic';
 
   if (!started) {
-    const playBackHref = blitz ? '/play?mode=blitz' : gameVariant === 'schach' ? '/play?mode=schach' : '/play?mode=classic';
+    const playBackHref = blitz ? '/play?mode=blitz' : gameVariant === 'pool' ? '/play?mode=pool' : gameVariant === 'schach' ? '/play?mode=schach' : '/play?mode=classic';
     const difficultyModal = (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/30 backdrop-blur-md">
         <Card className="w-full max-w-md shadow-xl">
@@ -238,7 +242,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
             <h1 className="font-display text-2xl font-bold text-center text-game-text">Wie möchtest du spielen?</h1>
           </main>
         </PageShell>
-        {typeof document !== 'undefined' && createPortal(difficultyModal, document.body)}
+        {mounted && typeof document !== 'undefined' && createPortal(difficultyModal, document.body)}
       </>
     );
   }
@@ -314,7 +318,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
   else if (oppPts > myPts) masterSide = game.oppSide;
   const iAmMaster = masterSide === game.mySide;
 
-  const backHref = mode === 'daily' ? '/daily' : mode === 'pvp' ? '/lobby' : blitz ? '/play?mode=blitz' : gameVariant === 'schach' ? '/play?mode=schach' : '/play?mode=classic';
+  const backHref = mode === 'daily' ? '/daily' : mode === 'pvp' ? '/lobby' : blitz ? '/play?mode=blitz' : gameVariant === 'pool' ? '/play?mode=pool' : gameVariant === 'schach' ? '/play?mode=schach' : '/play?mode=classic';
 
   return (
     <div className="fixed inset-0 w-full h-full max-md:min-h-dvh max-md:max-h-dvh max-md:flex md:static md:inset-auto md:w-auto md:h-auto md:min-h-screen md:max-h-dvh bg-game-bg text-game-text flex flex-col overflow-hidden">
@@ -385,6 +389,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   lastUsedPieceSize={game.lastUsedPieceSize}
                   opponentLabel={mode === 'pvp' ? 'Gegner' : 'KI'}
                   allowMovePieces={gameVariant === 'schach'}
+                  poolMode={gameVariant === 'pool'}
                   billboardSlot={
                     <div className="flex flex-col items-center justify-center gap-1 px-2 py-3 pb-4">
                       <div className="font-display font-bold text-lg md:text-xl"><span className="text-game-text">Runde </span><span className="text-game-accent tabular-nums">{game.round}/{game.ROUNDS_TOTAL}</span></div>

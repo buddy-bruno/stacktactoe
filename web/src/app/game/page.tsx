@@ -9,7 +9,7 @@ function GameRedirect() {
 
   useEffect(() => {
     const variant = searchParams.get('variant');
-    const base = variant === 'schach' ? '/game/schach' : '/game/classic';
+    const base = variant === 'schach' ? '/game/schach' : variant === 'pool' ? '/game/pool' : '/game/classic';
     const query = searchParams.toString();
     const target = query ? `${base}?${query}` : base;
     router.replace(target);

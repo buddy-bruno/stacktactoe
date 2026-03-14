@@ -4,13 +4,19 @@
  * Modus 2 (Schach): Setzen oder Bewegen pro Zug; Bewegung ab 3 eigenen Figuren auf dem Brett (sichtbar+verdeckt);
  *   1 Feld (Nachbar), nur oberste Figur ziehbar; Dreifach-Wiederholung + Zurückpendeln = Unentschieden.
  *   Siehe docs/SPIELMODI-SCHACH.md.
+ * Modus Pool: Gemeinsamer Pool (6B, 6D, 2K), Zug = Figur aus Pool nehmen + sofort setzen. Siehe docs/SPIELMODI-POOL.md.
  */
 
 export type Player = 'human' | 'ai';
 export type PieceSize = 'small' | 'medium' | 'large';
-export type MovePlace = { type: 'place'; player: Player; size: PieceSize; index: number };
+export type PoolSide = 'left' | 'right';
+export type MovePlace = { type: 'place'; player: Player; size: PieceSize; index: number; fromPool?: PoolSide };
 export type MoveMove = { type: 'move'; player: Player; fromIndex: number; toIndex: number; size: PieceSize };
 export type Move = MovePlace | MoveMove;
+
+/** Pool-Modus: links und rechts je 3B, 3D, 1K (gesamt 6B, 6D, 2K). */
+export const POOL_LEFT_INIT: Record<PieceSize, number> = { small: 3, medium: 3, large: 1 };
+export const POOL_RIGHT_INIT: Record<PieceSize, number> = { small: 3, medium: 3, large: 1 };
 
 export interface GameState {
   board: { player: Player; size: PieceSize }[][];
@@ -23,6 +29,14 @@ export interface GameState {
   placementOnly?: boolean;
   positionCount?: Record<string, number>;
   lastPositionBefore?: Record<Player, string | null>;
+  /** Pool-Modus: Vorrat links (nur gesetzt wenn poolMode). */
+  poolLeft?: Record<PieceSize, number>;
+  /** Pool-Modus: Vorrat rechts (nur gesetzt wenn poolMode). */
+  poolRight?: Record<PieceSize, number>;
+  /** Legacy: ein gemeinsamer Pool (wird bei Deserialisierung in poolLeft/poolRight aufgeteilt). */
+  pool?: Record<PieceSize, number>;
+  /** Pool-Modus: Swap-Regel (nicht mehr genutzt, Popup entfernt). */
+  swapApplied?: boolean;
 }
 
 export class STT {
@@ -53,15 +67,36 @@ export class STT {
   positionCount: Record<string, number> = {};
   /** Modus 2: Stellung vor dem letzten Zug dieses Spielers (Zurückpendeln verboten). */
   lastPositionBefore: Record<Player, string | null> = { human: null, ai: null };
+  /** Modus Pool: Vorrat links (3B, 3D, 1K). */
+  poolLeft?: Record<PieceSize, number>;
+  /** Modus Pool: Vorrat rechts (3B, 3D, 1K). */
+  poolRight?: Record<PieceSize, number>;
+  /** Legacy. */
+  pool?: Record<PieceSize, number>;
+  swapApplied?: boolean;
+  private poolMode = false;
 
-  constructor(opts?: { placementOnly?: boolean }) {
+  constructor(opts?: { placementOnly?: boolean; poolMode?: boolean }) {
     if (opts?.placementOnly) this.placementOnly = true;
+    if (opts?.poolMode) this.poolMode = true;
     this.reset();
   }
 
   reset() {
     this.board = Array.from({ length: 9 }, () => []);
-    this.res = { human: { ...this.IR }, ai: { ...this.IR } };
+    if (this.poolMode) {
+      this.poolLeft = { ...POOL_LEFT_INIT };
+      this.poolRight = { ...POOL_RIGHT_INIT };
+      this.pool = undefined;
+      this.res = { human: { small: 0, medium: 0, large: 0 }, ai: { small: 0, medium: 0, large: 0 } };
+      this.swapApplied = false;
+    } else {
+      this.res = { human: { ...this.IR }, ai: { ...this.IR } };
+      this.poolLeft = undefined;
+      this.poolRight = undefined;
+      this.pool = undefined;
+      this.swapApplied = undefined;
+    }
     this.cur = 'human';
     this.phase = 'placement';
     this.over = false;
@@ -71,10 +106,38 @@ export class STT {
     this.lastPositionBefore = { human: null, ai: null };
   }
 
+  /** Pool-Modus: true wenn getrennter Vorrat links/rechts genutzt wird. */
+  isPoolMode(): boolean {
+    return this.poolMode && (this.poolLeft != null || this.pool != null);
+  }
+
+  /** Pool-Modus: beide Seiten leer (Summe = 0). */
+  poolEmpty(): boolean {
+    if (this.poolLeft && this.poolRight) {
+      const L = this.poolLeft.small + this.poolLeft.medium + this.poolLeft.large;
+      const R = this.poolRight.small + this.poolRight.medium + this.poolRight.large;
+      return L + R === 0;
+    }
+    if (this.pool) return this.pool.small + this.pool.medium + this.pool.large === 0;
+    return false;
+  }
+
+  /** Pool-Modus: Anzahl einer Größe auf einer Seite (für Anzeige). */
+  poolCount(side: PoolSide, size: PieceSize): number {
+    const p = side === 'left' ? this.poolLeft : this.poolRight;
+    if (p) return p[size] ?? 0;
+    if (this.pool) return Math.floor((this.pool[size] ?? 0) / 2);
+    return 0;
+  }
+
   /** Vollständige Stellung für Dreifach-Wiederholung (Brett, Vorrat, wer am Zug). */
   positionKey(): string {
     const boardStr = this.board.map((stack) => stack.map((p) => `${p.player}:${p.size}`).join('|')).join(';');
-    const resStr = `H${this.res.human.small},${this.res.human.medium},${this.res.human.large}A${this.res.ai.small},${this.res.ai.medium},${this.res.ai.large}`;
+    const resStr = this.poolLeft && this.poolRight
+      ? `PL${this.poolLeft.small},${this.poolLeft.medium},${this.poolLeft.large}PR${this.poolRight.small},${this.poolRight.medium},${this.poolRight.large}`
+      : this.pool
+        ? `P${this.pool.small},${this.pool.medium},${this.pool.large}`
+        : `H${this.res.human.small},${this.res.human.medium},${this.res.human.large}A${this.res.ai.small},${this.res.ai.medium},${this.res.ai.large}`;
     return `${boardStr}|${resStr}|${this.cur}`;
   }
 
@@ -89,7 +152,7 @@ export class STT {
   }
 
   clone(): STT {
-    const g = new STT({ placementOnly: this.placementOnly });
+    const g = new STT({ placementOnly: this.placementOnly, poolMode: this.poolMode });
     g.board = this.board.map((s) => s.map((p) => ({ ...p })));
     g.res = { human: { ...this.res.human }, ai: { ...this.res.ai } };
     g.cur = this.cur;
@@ -99,6 +162,10 @@ export class STT {
     g.wl = this.wl ? [...this.wl] : null;
     g.positionCount = { ...this.positionCount };
     g.lastPositionBefore = { ...this.lastPositionBefore };
+    if (this.poolLeft) g.poolLeft = { ...this.poolLeft };
+    if (this.poolRight) g.poolRight = { ...this.poolRight };
+    if (this.pool) g.pool = { ...this.pool };
+    if (this.swapApplied !== undefined) g.swapApplied = this.swapApplied;
     return g;
   }
 
@@ -122,6 +189,7 @@ export class STT {
   }
 
   resEmpty(): boolean {
+    if (this.pool) return this.poolEmpty();
     for (const p of ['human', 'ai'] as Player[]) {
       for (const z of ['small', 'medium', 'large'] as PieceSize[]) {
         if (this.res[p][z] > 0) return false;
@@ -154,7 +222,13 @@ export class STT {
   }
 
   canPlace(p: Player, z: PieceSize, i: number): boolean {
-    if (this.over || i < 0 || i > 8 || this.res[p][z] <= 0) return false;
+    if (this.over || i < 0 || i > 8) return false;
+    const hasPiece = this.poolLeft && this.poolRight
+      ? (this.poolLeft[z] ?? 0) + (this.poolRight[z] ?? 0) > 0
+      : this.pool
+        ? (this.pool[z] ?? 0) > 0
+        : this.res[p][z] > 0;
+    if (!hasPiece) return false;
     const t = this.top(i);
     if (!t) return true;
     if (t.player === p) return false;
@@ -178,13 +252,18 @@ export class STT {
     return true;
   }
 
-  place(p: Player, z: PieceSize, i: number): boolean {
+  place(p: Player, z: PieceSize, i: number, fromPool?: PoolSide): boolean {
     if (!this.canPlace(p, z, i)) return false;
     const keyBefore = this.positionKey();
-    /** Schach: Überdecken = Schlagen, gegnerische Figur wird vom Brett entfernt (bleibt weg). Classic: Stapeln, Figur bleibt unter. */
+    /** Schach: Überdecken = Schlagen, gegnerische Figur wird vom Brett entfernt (bleibt weg). Classic/Pool: Stapeln, Figur bleibt unter. */
     if (!this.placementOnly && this.top(i)?.player !== p) this.board[i].pop();
     this.board[i].push({ player: p, size: z });
-    this.res[p][z]--;
+    if (this.poolLeft != null && this.poolRight != null) {
+      const side = fromPool ?? ((this.poolLeft[z] ?? 0) > 0 ? 'left' : 'right');
+      const pool = side === 'left' ? this.poolLeft : this.poolRight;
+      pool[z]--;
+    } else if (this.pool) this.pool[z]--;
+    else this.res[p][z]--;
     this.lastPositionBefore[p] = keyBefore;
     const w = this.checkWin();
     if (w) {
@@ -195,8 +274,13 @@ export class STT {
     this.cur = p === 'human' ? 'ai' : 'human';
     this.recordPosition();
     if (this.over) return true;
-    /** Kein legaler Zug für den Spieler am Zug → Unentschieden (Classic: alle gesetzt; Schach: §10). */
-    if (!this.anyMove(this.cur)) {
+    /** Kein legaler Zug für den Spieler am Zug → Unentschieden (Classic: alle gesetzt; Schach: §10; Pool: Pool leer oder kein legaler Zug). */
+    if (this.poolLeft != null || this.pool != null) {
+      if (this.poolEmpty() || !this.anyMove(this.cur)) {
+        this.over = true;
+        this.winner = null;
+      }
+    } else if (!this.anyMove(this.cur)) {
       this.over = true;
       this.winner = null;
     }
@@ -244,10 +328,20 @@ export class STT {
 
   placements(p: Player): MovePlace[] {
     const r: MovePlace[] = [];
-    for (const z of ['small', 'medium', 'large'] as PieceSize[]) {
-      if (!this.res[p][z]) continue;
-      for (let i = 0; i < 9; i++) {
-        if (this.canPlace(p, z, i)) r.push({ type: 'place', player: p, size: z, index: i });
+    const sizes = ['small', 'medium', 'large'] as PieceSize[];
+    for (const z of sizes) {
+      if (this.poolLeft != null && this.poolRight != null) {
+        for (let i = 0; i < 9; i++) {
+          if (!this.canPlace(p, z, i)) continue;
+          if ((this.poolLeft[z] ?? 0) > 0) r.push({ type: 'place', player: p, size: z, index: i, fromPool: 'left' });
+          if ((this.poolRight[z] ?? 0) > 0) r.push({ type: 'place', player: p, size: z, index: i, fromPool: 'right' });
+        }
+      } else {
+        const has = this.pool ? (this.pool[z] ?? 0) > 0 : this.res[p][z] > 0;
+        if (!has) continue;
+        for (let i = 0; i < 9; i++) {
+          if (this.canPlace(p, z, i)) r.push({ type: 'place', player: p, size: z, index: i });
+        }
       }
     }
     return r;
@@ -273,10 +367,34 @@ export class STT {
   anyMove(p: Player): boolean {
     return this.moves(p).length > 0;
   }
+
+  /** Pool-Modus: Swap-Regel anwenden – alle Brett-Figuren human↔ai tauschen, cur = 'human' (Tauschender bleibt am Zug), swapApplied = true. */
+  applySwap(): void {
+    if (!this.pool || this.swapApplied) return;
+    for (let i = 0; i < 9; i++) {
+      for (const piece of this.board[i] ?? []) {
+        piece.player = piece.player === 'human' ? 'ai' : 'human';
+      }
+    }
+    this.cur = 'human';
+    this.swapApplied = true;
+  }
+
+  /** Pool-Modus: Swap ablehnen – nur swapApplied = true setzen, kein Tausch (Modal nicht erneut anzeigen). */
+  declineSwap(): void {
+    if (this.pool) this.swapApplied = true;
+  }
+
+  /** Pool-Modus: Genau eine Figur auf dem Brett (für Swap-Angebot nach erstem Zug). */
+  countPiecesOnBoardTotal(): number {
+    let n = 0;
+    for (let i = 0; i < 9; i++) n += (this.board[i] ?? []).length;
+    return n;
+  }
 }
 
 export function serializeGameState(g: STT): GameState {
-  return {
+  const out: GameState = {
     board: g.board,
     res: g.res,
     cur: g.cur,
@@ -288,12 +406,18 @@ export function serializeGameState(g: STT): GameState {
     positionCount: g.positionCount && Object.keys(g.positionCount).length ? g.positionCount : undefined,
     lastPositionBefore: g.lastPositionBefore,
   };
+  if (g.poolLeft) out.poolLeft = { ...g.poolLeft };
+  if (g.poolRight) out.poolRight = { ...g.poolRight };
+  if (g.pool) out.pool = { ...g.pool };
+  if (g.swapApplied !== undefined) out.swapApplied = g.swapApplied;
+  return out;
 }
 
 export function deserializeGameState(json: GameState): STT {
-  const g = new STT({ placementOnly: json.placementOnly ?? false });
+  const poolMode = json.poolLeft != null || json.poolRight != null || json.pool != null;
+  const g = new STT({ placementOnly: json.placementOnly ?? true, poolMode });
   g.board = json.board ?? Array.from({ length: 9 }, () => []);
-  g.res = json.res ?? { human: { small: 3, medium: 3, large: 1 }, ai: { small: 3, medium: 3, large: 1 } };
+  g.res = json.res ?? (poolMode ? { human: { small: 0, medium: 0, large: 0 }, ai: { small: 0, medium: 0, large: 0 } } : { human: { small: 3, medium: 3, large: 1 }, ai: { small: 3, medium: 3, large: 1 } });
   g.cur = json.cur ?? 'human';
   g.phase = json.phase ?? 'placement';
   g.over = json.over ?? false;
@@ -301,5 +425,18 @@ export function deserializeGameState(json: GameState): STT {
   g.wl = json.wl ?? null;
   g.positionCount = json.positionCount ? { ...json.positionCount } : {};
   g.lastPositionBefore = json.lastPositionBefore ? { ...json.lastPositionBefore } : { human: null, ai: null };
+  if (json.poolLeft && json.poolRight) {
+    g.poolLeft = { ...json.poolLeft };
+    g.poolRight = { ...json.poolRight };
+  } else if (json.pool) {
+    const half = (k: PieceSize) => Math.floor((json.pool![k] ?? 0) / 2);
+    g.poolLeft = { small: half('small'), medium: half('medium'), large: half('large') };
+    g.poolRight = {
+      small: (json.pool!.small ?? 0) - g.poolLeft!.small,
+      medium: (json.pool!.medium ?? 0) - g.poolLeft!.medium,
+      large: (json.pool!.large ?? 0) - g.poolLeft!.large,
+    };
+  }
+  if (json.swapApplied !== undefined) g.swapApplied = json.swapApplied;
   return g;
 }

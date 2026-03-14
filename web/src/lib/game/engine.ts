@@ -1,26 +1,29 @@
 /**
  * Engine-Fassade und Modus-Konfiguration.
- * Einzige Quelle für „welche Regeln gelten“ pro Modus (Classic vs Schach).
+ * Einzige Quelle für „welche Regeln gelten“ pro Modus (Classic vs Schach vs Pool).
  * KI und UI nutzen dieselbe Engine (STT); Blitz/Daily/PvP sind nur Orchestrierung.
  */
 
 import { STT } from './stt';
 import type { Move, Player } from './stt';
 
-export type GameVariant = 'classic' | 'schach';
+export type GameVariant = 'classic' | 'schach' | 'pool';
 
-/** Engine-Optionen pro Variante. Regeln siehe docs/SPIELMODI-SCHACH.md bzw. SPIELMODI-CLASSIC.md. */
+/** Engine-Optionen pro Variante. Regeln siehe docs/SPIELMODI-*.md. */
 export interface EngineConfig {
-  /** true = nur Setzen (Classic); false = Setzen oder Bewegen pro Zug, Bewegung ab 3 eigenen Figuren (Schach) */
+  /** true = nur Setzen (Classic, Pool); false = Setzen oder Bewegen (Schach) */
   placementOnly: boolean;
+  /** true = gemeinsamer Pool (6B, 6D, 2K), keine pro-Spieler-Vorräte */
+  poolMode?: boolean;
 }
 
 const CONFIG: Record<GameVariant, EngineConfig> = {
   classic: { placementOnly: true },
   schach: { placementOnly: false },
+  pool: { placementOnly: true, poolMode: true },
 };
 
-/** Liefert die Engine-Konfiguration für einen Spielmodus. Single Source of Truth für Classic vs Schach. */
+/** Liefert die Engine-Konfiguration für einen Spielmodus. Single Source of Truth für Classic vs Schach vs Pool. */
 export function getEngineConfig(variant: GameVariant): EngineConfig {
   return CONFIG[variant];
 }
@@ -41,8 +44,8 @@ export function getLegalMoves(state: STT, player: Player): Move[] {
 
 /** Erzeugt eine neue Engine-Instanz für die gegebene Variante (z. B. neue Runde oder Lobby-Start). */
 export function createState(variant: GameVariant): STT {
-  const { placementOnly } = getEngineConfig(variant);
-  return new STT({ placementOnly });
+  const { placementOnly, poolMode } = getEngineConfig(variant);
+  return new STT({ placementOnly, poolMode: poolMode ?? false });
 }
 
 /** Stellung von Classic-Engine auf Schach-Engine umstellen (Brettstand bleibt erhalten). Nötig, wenn die Partie mit placementOnly=true gestartet wurde, die URL aber variant=schach hat. */

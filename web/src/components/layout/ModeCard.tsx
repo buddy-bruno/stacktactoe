@@ -4,12 +4,16 @@ import Link from 'next/link';
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-export type GameModeKey = 'ai' | 'pvp' | 'daily' | 'puzzle' | 'blitz' | 'classic' | 'schach';
+export type GameModeKey = 'ai' | 'pvp' | 'daily' | 'puzzle' | 'blitz' | 'classic' | 'schach' | 'pool';
 
 const MODE_CONFIG: Record<GameModeKey, { icon: React.ReactNode; iconBox: string }> = {
   classic: {
     icon: <span className="text-2xl leading-none" aria-hidden>🎮</span>,
     iconBox: 'bg-game-mode-ai/10 border-game-mode-ai/20 text-game-mode-ai',
+  },
+  pool: {
+    icon: <span className="text-2xl leading-none" aria-hidden>🃏</span>,
+    iconBox: 'bg-game-mode-pool/10 border-game-mode-pool/20 text-game-mode-pool',
   },
   ai: {
     icon: <span className="text-2xl leading-none" aria-hidden>🤖</span>,

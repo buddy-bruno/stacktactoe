@@ -12,14 +12,14 @@ function PlayContent() {
   const mode = searchParams.get('mode');
 
   useEffect(() => {
-    if (!mode || (mode !== 'classic' && mode !== 'blitz' && mode !== 'schach')) {
+    if (!mode || (mode !== 'classic' && mode !== 'blitz' && mode !== 'schach' && mode !== 'pool')) {
       router.replace('/');
     }
   }, [mode, router]);
 
-  const playTitle = mode === 'blitz' ? 'Blitz' : mode === 'schach' ? 'Schach' : 'Classic';
+  const playTitle = mode === 'blitz' ? 'Blitz' : mode === 'schach' ? 'Schach' : mode === 'pool' ? 'Pool' : 'Classic';
 
-  if (!mode || (mode !== 'classic' && mode !== 'blitz' && mode !== 'schach')) {
+  if (!mode || (mode !== 'classic' && mode !== 'blitz' && mode !== 'schach' && mode !== 'pool')) {
     return (
       <PageShell backHref="/" header={<AppHeader title="Lobby" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
@@ -31,8 +31,9 @@ function PlayContent() {
 
   const isBlitz = mode === 'blitz';
   const isSchach = mode === 'schach';
-  const gameHref = isBlitz ? '/game/classic?mode=ai&blitz=1' : isSchach ? '/game/schach?mode=ai' : '/game/classic?mode=ai';
-  const lobbyHref = isSchach ? '/lobby?variant=schach' : '/lobby';
+  const isPool = mode === 'pool';
+  const gameHref = isBlitz ? '/game/classic?mode=ai&blitz=1' : isSchach ? '/game/schach?mode=ai' : isPool ? '/game/pool?mode=ai' : '/game/classic?mode=ai';
+  const lobbyHref = isSchach ? '/lobby?variant=schach' : isPool ? '/lobby?variant=pool' : '/lobby';
 
   return (
     <PageShell backHref="/" header={<AppHeader title={playTitle} showRanking showAuth />}>

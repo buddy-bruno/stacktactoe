@@ -10,6 +10,9 @@ const FALLBACK: Record<Player, PieceColors> = {
   ai: { hi: '#fed7aa', mid: '#fb923c', lo: '#c2410c', dk: '#431407', acc: '#ffedd5', gem: '#fff7ed', sh: 'rgba(249,115,22,0.4)' },
 };
 
+/** Neutrale Pool-Farben (grau/silber) wenn variant="neutral". */
+const NEUTRAL: PieceColors = { hi: '#e5e7eb', mid: '#9ca3af', lo: '#6b7280', dk: '#374151', acc: '#f3f4f6', gem: '#f9fafb', sh: 'rgba(107,114,128,0.35)' };
+
 function getGlobalToken(name: string, fallback: string): string {
   if (typeof document === 'undefined') return fallback;
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -30,9 +33,9 @@ function getPieceColors(player: Player): PieceColors {
   return out;
 }
 
-export function PieceSvg({ player, size, className = '' }: { player: Player; size: PieceSize; className?: string }) {
+export function PieceSvg({ player, size, className = '', variant }: { player: Player; size: PieceSize; className?: string; variant?: 'human' | 'ai' | 'neutral' }) {
   const id = useId().replace(/:/g, '');
-  const C = useMemo(() => getPieceColors(player), [player]);
+  const C = useMemo(() => (variant === 'neutral' ? NEUTRAL : getPieceColors(variant ?? player)), [player, variant]);
   if (size === 'small') return <PawnSvg id={id} C={C} className={className} />;
   if (size === 'medium') return <QueenSvg id={id} C={C} className={className} />;
   return <KingSvg id={id} C={C} className={className} />;

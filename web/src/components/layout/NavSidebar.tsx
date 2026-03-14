@@ -82,24 +82,30 @@ export function NavSidebar({ open, onClose }: NavSidebarProps) {
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${show ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-md transition-opacity ease-out ${show ? 'opacity-100 duration-200' : 'opacity-0 duration-0 pointer-events-none'}`}
         aria-hidden
         onClick={onClose}
       />
       <aside
-        className={`fixed top-0 right-0 z-50 h-full w-full max-w-sm bg-game-bg-subtle border-l border-game-border shadow-2xl flex flex-col will-change-transform transition-[transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${show ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed z-50 flex flex-col shadow-2xl
+          transition-[transform,opacity] ease-out ${show ? 'duration-200' : 'duration-0'}
+          max-md:inset-4 max-md:rounded-3xl max-md:p-[1px] max-md:bg-gradient-to-br max-md:from-white/20 max-md:via-white/08 max-md:to-white/04
+          md:top-0 md:right-0 md:h-full md:w-full md:max-w-sm md:rounded-none
+          ${show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}
         role="dialog"
         aria-label="Menü"
         onTransitionEnd={handleTransitionEnd}
       >
-        <div className="flex items-center justify-between p-4 max-[1024px]:py-2.5 max-[1024px]:px-3 border-b border-game-border shrink-0 rounded-[11px] rounded-b-none backdrop-blur-2xl bg-game-surface/90">
-          <span className="text-sm sm:text-base font-semibold text-game-text">Menü</span>
+        <div className="flex flex-col flex-1 min-h-0 max-md:rounded-3xl md:rounded-none bg-game-bg-subtle/90 backdrop-blur-xl border border-white/10 md:border-l md:border-game-border/50 overflow-hidden">
+          <div className="flex items-center justify-between p-4 max-[1024px]:py-2.5 max-[1024px]:px-3 shrink-0">
+            <span className="text-sm sm:text-base font-semibold text-game-text">Menü</span>
           <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0 text-game-text hover:bg-game-surface-hover" aria-label="Schließen">
             <span aria-hidden>✕</span>
           </Button>
-        </div>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-white/[0.06] to-transparent shrink-0" aria-hidden />
 
-        <nav className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
+          <nav className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
           <div className="space-y-0.5">
             <Link href="/" onClick={handleLink} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-game-text hover:bg-game-surface-hover hover:text-game-primary transition-colors">
               <span className="text-lg shrink-0" aria-hidden>🏠</span>
@@ -152,7 +158,8 @@ export function NavSidebar({ open, onClose }: NavSidebarProps) {
               </div>
             )}
           </div>
-        </nav>
+          </nav>
+        </div>
       </aside>
     </>
   );

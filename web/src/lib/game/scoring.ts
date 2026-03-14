@@ -61,6 +61,10 @@ export interface SerializedMatchState {
   placementOnly?: boolean;
   positionCount?: Record<string, number>;
   lastPositionBefore?: Record<Player, string | null>;
+  poolLeft?: Record<PieceSize, number>;
+  poolRight?: Record<PieceSize, number>;
+  pool?: Record<PieceSize, number>;
+  swapApplied?: boolean;
 }
 
 export function serializeMatchState(
@@ -95,6 +99,10 @@ export function deserializeMatchState(json: Partial<SerializedMatchState>): {
     placementOnly: json.placementOnly,
     positionCount: json.positionCount,
     lastPositionBefore: json.lastPositionBefore,
+    poolLeft: json.poolLeft,
+    poolRight: json.poolRight,
+    pool: json.pool,
+    swapApplied: json.swapApplied,
   });
   const round = json.round ?? 1;
   const roundResults = Array.isArray(json.roundResults) ? [...json.roundResults] : [];

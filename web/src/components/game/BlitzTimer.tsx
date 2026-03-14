@@ -9,19 +9,24 @@ export function BlitzTimer({ active, onTimeout }: { active: boolean; onTimeout?:
   const [sec, setSec] = useState(BLITZ_SEC);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onTimeoutRef = useRef(onTimeout);
-  onTimeoutRef.current = onTimeout;
   const prevActiveRef = useRef(active);
+  useEffect(() => {
+    onTimeoutRef.current = onTimeout;
+  }, [onTimeout]);
 
   useEffect(() => {
     if (!active) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = null;
-      if (prevActiveRef.current) setSec(BLITZ_SEC);
+      if (prevActiveRef.current) {
+        const t = setTimeout(() => setSec(BLITZ_SEC), 0);
+        return () => clearTimeout(t);
+      }
       prevActiveRef.current = false;
       return () => {};
     }
     prevActiveRef.current = true;
-    setSec(BLITZ_SEC);
+    const startId = setTimeout(() => setSec(BLITZ_SEC), 0);
     intervalRef.current = setInterval(() => {
       setSec((s) => {
         if (s <= 1) {
@@ -35,6 +40,7 @@ export function BlitzTimer({ active, onTimeout }: { active: boolean; onTimeout?:
       });
     }, 1000);
     return () => {
+      clearTimeout(startId);
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = null;
     };
