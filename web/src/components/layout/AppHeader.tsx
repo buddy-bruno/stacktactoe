@@ -26,7 +26,7 @@ export function AppHeader({
 
   useEffect(() => {
     // getSession() zuerst (Cache/Storage, schnell), danach Listener für Anmeldung/Abmeldung
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
+    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null)).catch(() => setUser(null));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
@@ -36,7 +36,7 @@ export function AppHeader({
   return (
     <header
       className={cn(
-        'rounded-xl p-[1px] shadow-lg shadow-black/5 overflow-hidden',
+        'game-nav-header rounded-xl p-[1px] shadow-lg shadow-black/5 overflow-hidden',
         'bg-[var(--game-glass-gradient)]',
         className
       )}

@@ -120,17 +120,30 @@
   /* Layout */
   --game-content-max-width: 1240px;
   --game-content-padding: 1rem;
-  --game-dock-reserve-height: 13rem;
   --game-header-height: 4.25rem;
+  /* Desktop: kein Bottom-Dock im Flow → Reserve 0; Mobile überschreibt in Media Query */
+  --game-dock-reserve-height: 0px;
   --game-billboard-height: 5.5rem;
   --game-board-max-width: 620px;
+  /* Abstand Spielbrett zu Rändern (niemals bis zum Rand; oben/unten immer Abstand) */
+  --game-board-margin: 0.75rem;
+  /* Minimaler Abstand zwischen Header-Block und Brett-Zone (responsive) */
+  --game-board-zone-gap: 0.5rem;
   --game-billboard-min-h: 72px;
   --game-billboard-min-h-md: 88px;
-  /* Mobile: available height for board (viewport minus header, billboard, dock reserve, gaps) */
-  --game-board-available-height: calc(100dvh - var(--game-header-height) - var(--game-billboard-height) - var(--game-dock-reserve-height) - 2rem);
-  /* Mobile/Tablet: Reserve = Höhe Figurenleiste unten (pt-4 + Inhalt ~13rem + pb + Safe-Area), Brett bleibt immer darüber */
-  --game-dock-reserve-height-mobile: calc(17rem + env(safe-area-inset-bottom, 0px));
-  --game-board-available-height-mobile: calc(100dvh - var(--game-header-height) - var(--game-billboard-height) - var(--game-dock-reserve-height-mobile) - 2.5rem);
+  --game-dock-bottom-offset: 0px;
+  /*
+   * Mobile Layout (berechnet):
+   * Oben: --game-top-padding-mobile + Header/Nav (~--game-header-block-height)
+   * Mitte: Brett-Zone (flex-1) → Spielbrett mittig/mittig
+   * Unten: --game-dock-reserve-height-mobile = Leiste + Überragen der Figuren + Abstand + Safe-Area
+   */
+  --game-top-padding-mobile: calc(0.5rem + env(safe-area-inset-top, 0px));
+  --game-header-block-height: 10rem;
+  --game-dock-bar-height: 5rem;
+  --game-dock-piece-overflow: 2.25rem;
+  --game-dock-board-gap: 2rem;
+  --game-dock-reserve-height-mobile: calc(var(--game-dock-bar-height) + var(--game-dock-piece-overflow) + var(--game-dock-board-gap) + env(safe-area-inset-bottom, 0px));
   /* Figuren: Breite/Höhe (Proportionen ~0,63) — Desktop */
   --piece-small-w: 48px;
   --piece-small-h: 76px;
@@ -155,8 +168,10 @@
   --game-border: rgba(255, 255, 255, 0.1);
   --game-border-soft: rgba(255, 255, 255, 0.12);
   --game-border-soft-subtle: rgba(255, 255, 255, 0.06);
-  /* Rand-Verlauf: oben heller, unten transparent (für Docks & Score-Boxen) */
+  /* Rand-Verlauf: oben heller, unten transparent (für Header/Score-Boxen) */
   --game-border-gradient: linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
+  /* Umgekehrt: unten heller, oben transparent (für Mobile-Dock) */
+  --game-border-gradient-reverse: linear-gradient(to top, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
   --game-text: #dde8ff;
   --game-text-muted: #7a90b8;
   --game-text-inverse: #05080f;
@@ -177,8 +192,10 @@
   --game-board-bg: linear-gradient(168deg, #121c2e 0%, #0d1525 45%, #090f1c 100%);
   --game-board-border: 1px solid var(--game-border-soft);
   --game-board-shadow: 0 4px 0 rgba(0,0,0,0.2), 0 8px 24px rgba(0, 0, 0, 0.5);
-  /* Brett hebt sich von den Figurenleisten ab (3D-Elevation) */
-  --game-board-shadow-3d: 0 2px 0 rgba(255,255,255,0.06) inset, 0 6px 0 rgba(0,0,0,0.25), 0 20px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
+  /* Brett: moderner Look — weicher Schatten, dezente Kante */
+  --game-board-shadow-3d: 0 1px 0 rgba(255,255,255,0.08) inset, 0 4px 0 rgba(0,0,0,0.15), 0 12px 32px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  --game-board-bg-modern: linear-gradient(165deg, #151f33 0%, #0f1729 40%, #0a0f1a 100%);
+  --game-board-cell-bg: rgba(255, 255, 255, 0.04);
   --game-radius-card: 0.75rem;
   --game-radius-button: 0.5rem;
   --game-shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
@@ -209,17 +226,26 @@
   --game-piece-ai-sh: rgba(249, 115, 22, 0.4);
 }
 
-/* Mobile + Tablet: gleiche Reserve wie Figurenleiste unten, Brett endet immer darüber; Figuren runterskaliert */
+/* Mobile + Tablet: berechnete Höhen; Brett mittig zwischen Header und Dock-Zone */
 @media (max-width: 1023px) {
   :root {
-    --game-board-available-height: var(--game-board-available-height-mobile);
+    --game-dock-bottom-offset: env(safe-area-inset-bottom, 0px);
     --game-dock-reserve-height: var(--game-dock-reserve-height-mobile);
+    --game-header-block-height: 10.5rem;
+    --game-board-zone-gap: 0.75rem;
     --piece-small-w: 36px;
     --piece-small-h: 57px;
     --piece-medium-w: 45px;
     --piece-medium-h: 72px;
     --piece-large-w: 57px;
     --piece-large-h: 90px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --game-board-margin: 1.25rem;
+    --game-board-zone-gap: 1rem;
   }
 }
 
@@ -279,6 +305,55 @@
   label[for] {
     cursor: pointer;
   }
+}
+
+/* Mobile Figurenleiste: minimal hoch, Figuren dürfen nach oben über den Bereich ragen */
+.mobile-dock {
+  padding: 0.25rem 0.5rem;
+  overflow: visible;
+  min-height: auto;
+}
+.mobile-dock > div {
+  gap: 0.125rem 0.375rem;
+  max-width: 20rem;
+  margin: 0 auto;
+}
+.mobile-dock .dock-slot {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.125rem 0.25rem;
+  overflow: visible;
+}
+.mobile-dock .dock-slot > div:first-child {
+  width: 2.5rem;
+  height: 3.5rem;
+  overflow: visible;
+}
+.mobile-dock .dock-slot span {
+  font-size: 0.65rem;
+  margin-top: 0.375rem;
+  line-height: 1.1;
+}
+
+/* Nav/Header: sanfter Rand mit Border-Gradient (Game-Page + AppHeader) */
+.game-nav-header {
+  border: 1px solid transparent;
+  background: linear-gradient(var(--game-bg), var(--game-bg)) padding-box, var(--game-border-gradient) border-box;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+/* Mobile-Dock: Rand andersherum (unten heller, oben transparent) */
+.game-nav-header--dock {
+  background: linear-gradient(var(--game-bg), var(--game-bg)) padding-box, var(--game-border-gradient-reverse) border-box;
+}
+
+/* Spielbrett: moderner Look — weicher Verlauf, dezente Schatten */
+.game-board-frame {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background-image: var(--game-board-bg-modern);
+  background-origin: padding-box;
+  background-clip: padding-box;
+  box-shadow: var(--game-board-shadow-3d);
 }
 
 /* KI-Figur: weicher Einstieg beim Platzieren (von Figurenleiste) */

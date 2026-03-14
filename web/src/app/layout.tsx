@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Orbitron, Rajdhani } from "next/font/google";
+import { DevSuppressLockAbortError } from "@/components/DevSuppressLockAbortError";
 import "./globals.css";
 
 export const viewport: Viewport = {
-  themeColor: "#05080f", /* muss mit --game-bg in globals.css übereinstimmen */
+  themeColor: "#05080f",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover", /* iOS: Safe-Area nutzen, app-ähnlich bei „Zum Home-Bildschirm“ */
 };
 
 const orbitron = Orbitron({
@@ -36,6 +40,7 @@ export default function RootLayout({
   return (
     <html lang="de">
       <body className={`${orbitron.variable} ${rajdhani.variable} antialiased font-sans`}>
+        <DevSuppressLockAbortError />
         {children}
       </body>
     </html>

@@ -22,6 +22,9 @@ export default function ProfilePage() {
       }
       setEmail(user.email ?? null);
       setLoading(false);
+    }).catch(() => {
+      router.replace('/auth?redirect=/profile');
+      setLoading(false);
     });
   }, [router]);
 

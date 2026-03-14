@@ -23,7 +23,7 @@ function AuthContent() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) router.replace(redirect);
-    });
+    }).catch(() => {});
   }, [redirect, router]);
 
   async function handleLogin(e: React.FormEvent) {

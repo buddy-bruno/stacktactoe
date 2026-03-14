@@ -47,7 +47,7 @@ function GameContent() {
   const [dailySubmitError, setDailySubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null)).catch(() => setUserId(null));
   }, []);
 
   const router = useRouter();
@@ -55,41 +55,48 @@ function GameContent() {
     if (mode !== 'pvp' || !gameId) return;
     let cancelled = false;
     (async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData.user?.id ?? null;
-      if (!uid) {
-        if (!cancelled) {
-          setPvpLoading(false);
-          const redirect = encodeURIComponent(`/game?mode=pvp&id=${gameId}`);
-          router.replace(`/auth?redirect=${redirect}`);
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData.user?.id ?? null;
+        if (!uid) {
+          if (!cancelled) {
+            setPvpLoading(false);
+            const redirect = encodeURIComponent(`/game?mode=pvp&id=${gameId}`);
+            router.replace(`/auth?redirect=${redirect}`);
+          }
+          return;
         }
-        return;
+        const { data: game, error } = await supabase
+          .from('games')
+          .select('state_json, player1_id, player2_id, status')
+          .eq('id', gameId)
+          .single();
+        if (cancelled) return;
+        if (error || !game) {
+          setPvpError('Spiel nicht gefunden');
+          setPvpLoading(false);
+          return;
+        }
+        const myRole: MyRole = game.player1_id === uid ? 'player1' : (game.player2_id === uid ? 'player2' : 'player1');
+        if (game.player1_id !== uid && game.player2_id !== uid) {
+          setPvpError('Du bist nicht Teil dieses Spiels');
+          setPvpLoading(false);
+          return;
+        }
+        const initialMatchState = deserializeMatchState((game.state_json as object) ?? {});
+        setPvpData({
+          myRole,
+          initialMatchState,
+          player1Id: game.player1_id ?? null,
+          player2Id: game.player2_id ?? null,
+        });
+        if (!cancelled) setPvpLoading(false);
+      } catch {
+        if (!cancelled) {
+          setPvpError('Verbindungsfehler. Bitte Netz prüfen.');
+          setPvpLoading(false);
+        }
       }
-      const { data: game, error } = await supabase
-        .from('games')
-        .select('state_json, player1_id, player2_id, status')
-        .eq('id', gameId)
-        .single();
-      if (cancelled) return;
-      if (error || !game) {
-        setPvpError('Spiel nicht gefunden');
-        setPvpLoading(false);
-        return;
-      }
-      const myRole: MyRole = game.player1_id === uid ? 'player1' : (game.player2_id === uid ? 'player2' : 'player1');
-      if (game.player1_id !== uid && game.player2_id !== uid) {
-        setPvpError('Du bist nicht Teil dieses Spiels');
-        setPvpLoading(false);
-        return;
-      }
-      const initialMatchState = deserializeMatchState((game.state_json as object) ?? {});
-      setPvpData({
-        myRole,
-        initialMatchState,
-        player1Id: game.player1_id ?? null,
-        player2Id: game.player2_id ?? null,
-      });
-      setPvpLoading(false);
     })();
     return () => { cancelled = true; };
   }, [mode, gameId, router]);
@@ -145,6 +152,19 @@ function GameContent() {
   useEffect(() => {
     if (started) (window as unknown as { __matchStartTime?: number }).__matchStartTime = Date.now();
   }, [started]);
+
+  const isMainGameView = started && !(mode === 'pvp' && gameId && (pvpLoading || !pvpData || pvpError));
+  useEffect(() => {
+    if (!isMainGameView) return;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
+    };
+  }, [isMainGameView]);
 
   if (!started) {
     const playBackHref = blitz ? '/play?mode=blitz' : '/play?mode=classic';
@@ -208,13 +228,14 @@ function GameContent() {
   const iAmMaster = masterSide === game.mySide;
 
   return (
-    <div className="min-h-screen max-h-dvh md:max-h-none bg-game-bg text-game-text flex flex-col overflow-hidden md:overflow-visible">
+    <div className="fixed inset-0 w-full h-full max-lg:flex lg:static lg:inset-auto lg:w-auto lg:h-auto lg:min-h-screen lg:max-h-dvh bg-game-bg text-game-text flex flex-col overflow-hidden">
       <CaptureFx />
-      <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)] pt-6 shrink-0 flex flex-col flex-1 min-h-0 overflow-y-auto md:overflow-visible overscroll-behavior-contain">
-        <header className="rounded-xl p-[1px] shrink-0 shadow-lg shadow-black/5 bg-[var(--game-glass-gradient)] mb-2 overflow-hidden">
+      {/* Layout: [Header shrink-0] [Board-Bereich flex-1 min-h-0]; unten Platz für Mobile-Dock via pb */}
+      <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)] pt-6 max-lg:pt-[var(--game-top-padding-mobile)] flex flex-col flex-1 min-h-0 overflow-hidden">
+        <header className="game-nav-header rounded-xl p-[1px] shrink-0 shadow-lg shadow-black/5 bg-[var(--game-glass-gradient)] mb-2 max-lg:mb-1.5 overflow-hidden">
           <div className={cn('overflow-hidden', headerInnerClass)}>
-            {/* Zeile 1: Logo + Nav (gleicher Stil wie AppHeader) */}
-            <div className="flex items-center justify-between p-4 shrink-0">
+            {/* Zeile 1: Logo + Nav — Mobile: weniger Innenabstand */}
+            <div className="flex items-center justify-between p-4 max-lg:py-2.5 max-lg:px-3 shrink-0">
               <Link href="/" className="font-display font-black text-game-text text-lg tracking-wide shrink-0">
                 Stack<em className="text-game-primary not-italic" style={{ textShadow: 'var(--game-logo-glow)' }}>Tac</em>Toe
               </Link>
@@ -238,8 +259,8 @@ function GameContent() {
                 </div>
               </div>
             </div>
-            {/* Zeile 2: Billboard (Du | Runde | KI) als Erweiterung des Headers */}
-            <div className="flex flex-wrap items-stretch justify-between gap-3 md:gap-4 px-4 pb-4 pt-4 border-t border-game-border/50 min-h-[var(--game-billboard-min-h)] md:min-h-[var(--game-billboard-min-h-md)]">
+            {/* Zeile 2: Billboard (Du | Runde | KI) — Mobile: weniger Innenabstand */}
+            <div className="flex flex-wrap items-stretch justify-between gap-3 md:gap-4 px-4 pb-4 pt-4 max-lg:px-3 max-lg:py-3 border-t border-game-border/50 min-h-[var(--game-billboard-min-h)] md:min-h-[var(--game-billboard-min-h-md)]">
               <div className="flex flex-col gap-2 min-w-0 flex-1 basis-0 max-w-[240px]">
                 <div className="flex flex-col gap-2 w-full">
                   <div className="rounded-xl p-[1px] overflow-hidden shadow-sm" style={{ background: 'var(--game-border-gradient)' }}>
@@ -288,8 +309,9 @@ function GameContent() {
             </div>
           </div>
         </header>
+        {/* Board-Zone: restliche Höhe zwischen Header und Dock; Brett mittig in dieser Zone (pb = Dock inkl. Überragen + Abstand) */}
         <div className="flex-1 flex flex-col items-center justify-center min-h-0 w-full pb-[var(--game-dock-reserve-height)] lg:pb-0">
-          <main className="w-full flex items-center justify-center flex-1 min-h-0 pt-4 md:pt-0">
+          <main className="w-full flex flex-col items-center justify-center flex-1 min-h-0 pt-[var(--game-board-zone-gap)] md:pt-0" aria-label="Spielbereich">
           <GameBoard
             stt={game.stt}
             mySide={game.mySide}

@@ -36,7 +36,7 @@ function LobbyContent() {
         return;
       }
       setAuthReady(true);
-    });
+    }).catch(() => router.replace('/auth?redirect=/lobby'));
   }, [router]);
 
   async function createGame() {

@@ -22,7 +22,7 @@ export default function DailyPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setIsLoggedIn(!!user));
+    supabase.auth.getUser().then(({ data: { user } }) => setIsLoggedIn(!!user)).catch(() => setIsLoggedIn(false));
   }, []);
 
   useEffect(() => {

@@ -24,20 +24,17 @@ function PieceDockAside({
   children: React.ReactNode;
   order: 1 | 3;
 }) {
-  const gradientClass =
-    variant === 'human'
-      ? 'bg-gradient-to-t from-transparent via-game-primary/[0.04] to-game-primary/10'
-      : 'bg-gradient-to-t from-transparent via-game-secondary/[0.04] to-game-secondary/10';
   const titleColor = variant === 'human' ? 'text-game-primary' : 'text-game-secondary';
+  const tintClass = variant === 'human' ? 'bg-game-primary/[0.03]' : 'bg-game-secondary/[0.03]';
   return (
     <aside className={`hidden lg:flex flex-col gap-4 w-52 xl:w-60 shrink-0 min-h-0 ${order === 1 ? 'lg:order-1' : 'lg:order-3'}`}>
-      <div className={`rounded-2xl h-full min-h-0 flex flex-col overflow-hidden shadow-md ${gradientClass}`}>
-        <div className="rounded-2xl p-[1px] h-full min-h-0 flex flex-col overflow-hidden" style={{ background: 'var(--game-border-gradient)' }}>
-          <div className="piece-dock flex flex-col gap-4 p-4 rounded-[15px] bg-[var(--game-surface-elevated-soft)] backdrop-blur-2xl h-full min-h-0 overflow-auto border border-game-border-soft-subtle">
-          <span className={`text-xs font-bold uppercase tracking-widest ${titleColor} text-center pb-2 border-b border-game-border/50`}>{title}</span>
-          <div className="flex flex-col gap-3 flex-1 min-h-0">
-            {children}
-          </div>
+      <div className="game-nav-header rounded-2xl p-[1px] h-full min-h-0 flex flex-col overflow-hidden shadow-lg shadow-black/5">
+        <div className={`rounded-[15px] h-full min-h-0 flex flex-col overflow-hidden bg-[var(--game-glass-gradient)] ${tintClass}`}>
+          <div className="piece-dock flex flex-col gap-4 p-4 rounded-[15px] h-full min-h-0 overflow-auto">
+            <span className={`text-xs font-bold uppercase tracking-widest ${titleColor} text-center pb-2`}>{title}</span>
+            <div className="flex flex-col gap-3 flex-1 min-h-0">
+              {children}
+            </div>
           </div>
         </div>
       </div>
@@ -140,14 +137,14 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
   const oppSide: Player = mySide === 'human' ? 'ai' : 'human';
 
   const dockSlots = (
-      <div className="grid grid-cols-3 lg:grid-cols-1 gap-2 sm:gap-3 w-full max-w-2xl lg:max-w-none">
+      <div className="grid grid-cols-3 lg:grid-cols-1 gap-1.5 sm:gap-2 lg:gap-3 w-full max-w-2xl lg:max-w-none">
         {(['small', 'medium', 'large'] as const).map((size) => {
           const cnt = stt.res[mySide][size];
           const canUse = cnt > 0 && stt.phase === 'placement' && myTurn && !stt.over;
           return (
             <div
               key={size}
-              className={`dock-slot flex flex-col items-center justify-center text-center p-3 sm:p-4 rounded-xl border transition-all min-w-0 ${canUse ? 'border-game-border cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : 'border-transparent'} ${cnt <= 0 ? 'opacity-30' : ''}`}
+              className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 lg:p-4 rounded-xl border transition-all min-w-0 ${canUse ? 'border-game-border cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : 'border-transparent'} ${cnt <= 0 ? 'opacity-30' : ''}`}
               onPointerDown={canUse ? (e) => startDragReserve(size, e) : undefined}
             >
               <div className="relative w-16 h-24 flex items-end justify-center">
@@ -216,22 +213,18 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
           {dockSlots}
         </PieceDockAside>
 
-        {/* Center: Board */}
-        <div className="flex flex-col items-center justify-center flex-1 min-w-0 min-h-0 order-1 lg:order-2 w-full max-w-full lg:max-w-[min(92vw,var(--game-board-max-width))] mt-4 lg:mt-0 lg:justify-start max-lg:max-h-[var(--game-board-available-height)]">
-          <div className="bwrap flex flex-col items-center justify-center gap-2 w-full min-h-0 min-w-0 flex-1 max-lg:max-h-full lg:h-full">
+        {/* Center: Spielbrett — Höhe nur aus Flex (kein vh), Abstand oben/unten, immer quadratisch, nie Überlappung */}
+        <div className="flex flex-col items-center justify-center flex-1 min-w-0 min-h-0 order-1 lg:order-2 w-full max-w-full lg:max-w-[min(92vw,var(--game-board-max-width))] mt-4 lg:mt-0 p-[var(--game-board-margin)] box-border overflow-hidden">
+          <div className="bwrap w-full min-h-0 min-w-0 flex-1 h-full max-h-full grid place-items-center">
             <div
               ref={boardRef}
-              className="bscene relative w-full aspect-square max-w-full max-lg:max-h-[var(--game-board-available-height)] max-lg:min-h-0"
+              className="bscene relative h-full max-w-full w-auto aspect-square min-w-0 min-h-0"
+              aria-label="Spielbrett"
             >
               <div className="board3d w-full h-full flex items-center justify-center" style={{ perspective: '800px', transformStyle: 'preserve-3d' }}>
                 <div
-                  className="bsurf grid grid-cols-3 gap-1.5 sm:gap-2 p-3 sm:p-4 w-full h-full rounded-xl sm:rounded-[22px] transition-shadow duration-200"
-                  style={{
-                    background: 'var(--game-board-bg)',
-                    border: 'var(--game-board-border)',
-                    boxShadow: 'var(--game-board-shadow-3d)',
-                    transform: 'translateZ(12px)',
-                  }}
+                  className="game-board-frame bsurf grid grid-cols-3 gap-1.5 sm:gap-2 p-3 sm:p-4 w-full h-full min-h-0 rounded-xl sm:rounded-[22px] transition-shadow duration-200"
+                  style={{ transform: 'translateZ(12px)' }}
                 >
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => {
                     const stack = stt.board[i] ?? [];
@@ -244,12 +237,13 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
                       <div
                         key={i}
                         data-cell-index={i}
-                        className={`cell relative min-h-[70px] sm:min-h-[100px] rounded-[10px] sm:rounded-[13px] transition-all duration-150 overflow-visible
+                        className={`cell relative min-w-0 w-full aspect-square rounded-[10px] sm:rounded-[13px] transition-colors duration-150 overflow-visible
                           ${isWin ? 'animate-pulse ring-2 ring-game-success/50' : ''}
-                          ${hot ? ' -translate-y-0.5 border-game-border' : ''}
+                          ${hot ? ' border-game-border' : ''}
                           ${valid ? ' border-game-success/50 ring-1 ring-game-success/20' : ''}
                           ${invalid ? ' border-game-danger/30' : ''}
-                          bg-gradient-to-br from-white/5 to-white/[0.02] border border-game-border
+                          border border-game-border-soft-subtle shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]
+                          bg-[var(--game-board-cell-bg)]
                         `}
                       >
                         {vis.map((p, idx) => {
@@ -294,10 +288,17 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
           </div>
         </div>
 
-        {/* Mobil: Figurenleiste fixiert unten — gleiche Breite wie Header (Content-Tokens) */}
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4 px-[var(--game-content-padding)] bg-game-surface/55 backdrop-blur-xl order-2">
-          <div className="w-full max-w-[var(--game-content-max-width)] flex justify-center">
-            {dockSlots}
+        {/* Mobil: kompakte Figurenleiste, Figuren dürfen nach oben ragen */}
+        <div
+          className="lg:hidden fixed left-0 right-0 z-30 flex justify-center pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] order-2 overflow-visible"
+          style={{ bottom: 'var(--game-dock-bottom-offset, 0)' }}
+        >
+          <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)] overflow-visible">
+            <div className="game-nav-header game-nav-header--dock rounded-xl p-[1px] shadow-lg shadow-black/5 overflow-visible bg-[var(--game-glass-gradient)]">
+              <div className="mobile-dock rounded-xl backdrop-blur-2xl bg-game-surface/90 p-1.5 flex justify-center overflow-visible">
+                {dockSlots}
+              </div>
+            </div>
           </div>
         </div>
       </div>
