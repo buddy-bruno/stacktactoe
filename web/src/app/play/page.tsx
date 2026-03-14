@@ -73,11 +73,27 @@ function PlayContent() {
           <Card className="w-full max-w-2xl border-game-primary/30 bg-game-primary/5">
             <CardContent className="pt-6">
               <p className="text-game-text font-medium mb-3">Du hast ein laufendes Spiel.</p>
-              <Link href={`/game/${activePvpGame.variant}?mode=pvp&id=${activePvpGame.id}`}>
-                <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
-                  Weiterspielen
+              <div className="flex gap-2">
+                <Link href={`/game/${activePvpGame.variant}?mode=pvp&id=${activePvpGame.id}`} className="flex-1">
+                  <Button className="w-full bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
+                    Weiterspielen
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  className="shrink-0 border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text"
+                  onClick={async () => {
+                    await supabase.from('games').update({ status: 'abandoned' }).eq('id', activePvpGame.id);
+                    try {
+                      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
+                    } catch {}
+                    setActivePvpGame(null);
+                    router.push('/');
+                  }}
+                >
+                  Spiel beenden
                 </Button>
-              </Link>
+              </div>
             </CardContent>
           </Card>
         )}

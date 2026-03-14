@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,8 @@ import type { Difficulty } from '@/lib/game';
 import type { Player } from '@/lib/game/stt';
 import type { MyRole } from '@/hooks/useGameState';
 import { useGameState } from '@/hooks/useGameState';
-import { deserializeMatchState } from '@/lib/game/scoring';
+import { createState } from '@/lib/game/engine';
+import { deserializeMatchState, serializeMatchState } from '@/lib/game/scoring';
 import { GameBoard } from '@/components/game/GameBoard';
 import { GameHelpSidebar } from '@/components/game/GameHelpSidebar';
 import { GameRankingSidebar } from '@/components/game/GameRankingSidebar';
@@ -24,6 +25,7 @@ import { ReplayBoard } from '@/components/game/ReplayBoard';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { submitDailyScore } from '@/lib/game/daily';
+import { useToast } from '@/components/ToastProvider';
 
 /** Gemeinsamer Spielinhalt – Variante kommt ausschließlich von der Route (Prop), keine Kollision mit anderen Modi. */
 export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'schach' | 'pool' }) {
@@ -48,7 +50,10 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
   const [helpOpen, setHelpOpen] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
   const [dailySubmitError, setDailySubmitError] = useState<string | null>(null);
+  const [aiCreating, setAiCreating] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const { toast } = useToast();
+
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 0);
     return () => clearTimeout(t);
@@ -68,6 +73,7 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
           setPvpGameStatus('active');
           if (payload.new.player2_id) {
             setPvpData((prev) => (prev ? { ...prev, player2Id: payload.new.player2_id ?? null } : prev));
+            toast('Gegner ist Partie beigetreten');
           }
         }
       }
@@ -75,7 +81,38 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [mode, gameId, pvpGameStatus]);
+  }, [mode, gameId, pvpGameStatus, toast]);
+
+  // PvP: Wenn Gegner Partie verlässt (status = abandoned), Toast + Redirect zur Startseite
+  const abandonedHandledRef = useRef(false);
+  useEffect(() => {
+    if (mode !== 'pvp' || !gameId || (pvpGameStatus !== 'active' && pvpGameStatus !== 'waiting')) return;
+    abandonedHandledRef.current = false;
+    const handleAbandoned = () => {
+      if (abandonedHandledRef.current) return;
+      abandonedHandledRef.current = true;
+      toast('Gegner hat Partie verlassen');
+      try {
+        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
+      } catch {}
+      router.replace('/');
+    };
+    const channel = supabase.channel('game-abandoned-' + gameId).on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'games', filter: 'id=eq.' + gameId },
+      (payload: { new: { status: string } }) => {
+        if (payload?.new?.status === 'abandoned') handleAbandoned();
+      }
+    ).subscribe();
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from('games').select('status').eq('id', gameId).single();
+      if (data?.status === 'abandoned') handleAbandoned();
+    }, 2500);
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
+  }, [mode, gameId, pvpGameStatus, toast, router]);
 
   useEffect(() => {
     if (mode !== 'pvp' || !gameId) return;
@@ -238,9 +275,48 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
             <div className="flex gap-2">
               <Button
                 className="flex-1 bg-game-primary/20 text-game-primary border-game-primary/30 hover:bg-game-primary/30"
-                onClick={() => setStarted(true)}
+                disabled={aiCreating}
+                onClick={async () => {
+                  if (mode !== 'ai') {
+                    setStarted(true);
+                    return;
+                  }
+                  if (!userId) {
+                    setStarted(true);
+                    return;
+                  }
+                  setAiCreating(true);
+                  try {
+                    const stt = createState(gameVariant);
+                    const sc = { human: { total: 0, wins: 0, moves: 0, rnd: 0 }, ai: { total: 0, wins: 0, moves: 0, rnd: 0 } };
+                    const stateJson = serializeMatchState(stt, 1, [], sc);
+                    const { data, error } = await supabase
+                      .from('games')
+                      .insert({
+                        player1_id: userId,
+                        player2_id: null,
+                        mode: 'ai',
+                        difficulty: diff,
+                        status: 'active',
+                        state_json: stateJson,
+                      })
+                      .select('id')
+                      .single();
+                    if (error) throw error;
+                    if (data?.id) {
+                      const params = new URLSearchParams({ mode: 'ai', id: data.id });
+                      if (blitz) params.set('blitz', '1');
+                      router.replace(`/game/${gameVariant}?${params.toString()}`);
+                    }
+                    setStarted(true);
+                  } catch {
+                    setStarted(true);
+                  } finally {
+                    setAiCreating(false);
+                  }
+                }}
               >
-                Spiel starten
+                {aiCreating ? 'Erstelle…' : 'Spiel starten'}
               </Button>
               <Link href={playBackHref}>
                 <Button variant="outline" className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">Abbrechen</Button>
@@ -310,11 +386,27 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
                   <div className="h-full w-1/3 rounded-full bg-game-primary animate-[pulse_1.5s_ease-in-out_infinite]" />
                 </div>
               </div>
-              <Link href="/lobby">
-                <Button variant="outline" className="w-full border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
-                  Zurück zur Lobby
+              <div className="flex gap-2">
+                <Link href="/lobby" className="flex-1">
+                  <Button variant="outline" className="w-full border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
+                    Zurück zur Lobby
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  className="shrink-0 border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text"
+                  onClick={async () => {
+                    if (!gameId) return;
+                    await supabase.from('games').update({ status: 'abandoned' }).eq('id', gameId);
+                    try {
+                      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
+                    } catch {}
+                    router.replace('/');
+                  }}
+                >
+                  Spiel beenden
                 </Button>
-              </Link>
+              </div>
             </CardContent>
           </Card>
         </main>
@@ -347,7 +439,27 @@ export function GamePageContent({ gameVariant }: { gameVariant: 'classic' | 'sch
         style={{ marginTop: 'var(--game-header-margin)', marginBottom: 0, marginLeft: 0, marginRight: 0, background: 'var(--game-bg)' }}
       >
         <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)]">
-          <AppHeader title={gameHeaderTitle} showRanking showAuth />
+          <AppHeader
+            title={gameHeaderTitle}
+            showRanking
+            showAuth
+            rightSlot={mode === 'pvp' && gameId ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text text-xs font-medium"
+                onClick={async () => {
+                  await supabase.from('games').update({ status: 'abandoned' }).eq('id', gameId).then(() => {});
+                  try {
+                    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('stacktactoe_active_pvp');
+                  } catch {}
+                  router.replace('/');
+                }}
+              >
+                Spiel beenden
+              </Button>
+            ) : undefined}
+          />
         </div>
       </div>
       <div className="w-full max-w-[var(--game-content-max-width)] mx-auto px-[var(--game-content-padding)] pt-[var(--game-header-height)] pb-4 md:pb-6 flex flex-col flex-1 min-h-0 overflow-hidden">

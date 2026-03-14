@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Orbitron, Rajdhani } from "next/font/google";
 import { DevSuppressLockAbortError } from "@/components/DevSuppressLockAbortError";
+import { ToastProvider } from "@/components/ToastProvider";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -43,7 +44,7 @@ export default function RootLayout({
     <html lang="de">
       <body className={`${orbitron.variable} ${rajdhani.variable} antialiased font-sans`}>
         <DevSuppressLockAbortError />
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

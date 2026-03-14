@@ -80,6 +80,8 @@ export function useGameState(
   const runAiTurnRef = useRef<() => void>(() => {});
   const pvpSubRef = useRef<{ unsubscribe: () => void } | null>(null);
   const pvpPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pvpApplyRemoteRef = useRef<() => void | Promise<void>>(() => {});
+  const lastAppliedUpdatedAtRef = useRef<string | null>(null);
   const roundRef = useRef(round);
   const lockedRef = useRef(locked);
   const blitzTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -320,7 +322,7 @@ export function useGameState(
     runAiTurnRef.current = runAiTurn;
   }, [runAiTurn]);
 
-  // PvP: Realtime subscription to receive opponent moves
+  // PvP: Realtime subscription to receive opponent moves (Android/Mobilfunk: oft unzuverlässig → Polling-Fallback ist führend)
   useEffect(() => {
     if (mode !== 'pvp' || !gameId) return;
     const channel = supabase.channel('pvp-moves-' + gameId).on(
@@ -366,25 +368,31 @@ export function useGameState(
           // ignore invalid payloads
         }
       }
-    ).subscribe();
+    ).subscribe((status) => {
+      // Nach (Re-)Connect sofort Server-Stand holen – wichtig für Android
+      if (status === 'SUBSCRIBED') pvpApplyRemoteRef.current?.();
+    });
     pvpSubRef.current = { unsubscribe: () => { supabase.removeChannel(channel); pvpSubRef.current = null; } };
     return () => {
       pvpSubRef.current?.unsubscribe();
     };
   }, [mode, gameId, mySide, oppSide]);
 
-  // PvP: Polling-Fallback für zuverlässige Sync (Realtime kann auf Mobilfunk/WLAN ausfallen)
+  // PvP: Polling als zuverlässige Sync (Realtime auf Android/Mobilfunk oft ausfallend) – Best Practice
   useEffect(() => {
     if (mode !== 'pvp' || !gameId) return;
     const applyRemote = async () => {
-      const { data: row } = await supabase.from('games').select('state_json').eq('id', gameId).single();
+      const { data: row } = await supabase.from('games').select('state_json, updated_at').eq('id', gameId).single();
       if (!row?.state_json) return;
       try {
         const parsed = deserializeMatchState(row.state_json as Parameters<typeof deserializeMatchState>[0]);
         const curRound = roundRef.current;
         const curLocked = lockedRef.current;
-        const shouldApply = curLocked || parsed.round > curRound;
+        const serverUpdatedAt = row.updated_at as string | undefined;
+        const serverNewer = serverUpdatedAt != null && serverUpdatedAt !== lastAppliedUpdatedAtRef.current;
+        const shouldApply = serverNewer || curLocked || parsed.round > curRound;
         if (!shouldApply) return;
+        lastAppliedUpdatedAtRef.current = serverUpdatedAt ?? null;
         const prev = sttRef.current;
         let cell: number | null = null;
         let pieceSize: PieceSize | null = null;
@@ -420,18 +428,25 @@ export function useGameState(
         // ignore
       }
     };
-    const interval = setInterval(applyRemote, 2500);
+    pvpApplyRemoteRef.current = () => { void applyRemote(); };
+    // Sofort-Sync beim Einstieg und bei Reconnect
+    void applyRemote();
+    const ms = locked ? 1000 : 2500;
+    const interval = setInterval(applyRemote, ms);
     pvpPollRef.current = interval;
     const onVisible = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') void applyRemote();
     };
+    const onFocus = () => { void applyRemote(); };
     document.addEventListener('visibilitychange', onVisible);
+    if (typeof window !== 'undefined') window.addEventListener('focus', onFocus);
     return () => {
       clearInterval(interval);
       pvpPollRef.current = null;
       document.removeEventListener('visibilitychange', onVisible);
+      if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
     };
-  }, [mode, gameId, mySide, oppSide]);
+  }, [mode, gameId, mySide, oppSide, locked]);
 
   const nextRound = useCallback(() => {
     setModal(null);
