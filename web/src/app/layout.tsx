@@ -7,7 +7,8 @@ export const viewport: Viewport = {
   themeColor: "#05080f",
   width: "device-width",
   initialScale: 1,
-  viewportFit: "cover", /* iOS: Safe-Area nutzen, app-ähnlich bei „Zum Home-Bildschirm“ */
+  viewportFit: "cover", /* iOS: Safe-Area, app-ähnlich */
+  interactiveWidget: "resizes-content", /* Android (Xiaomi/Redmi, Chrome): Viewport bei Tastatur */
 };
 
 const orbitron = Orbitron({
@@ -25,6 +26,7 @@ const rajdhani = Rajdhani({
 export const metadata: Metadata = {
   title: "Stack Tac Toe",
   description: "Taktisches Browser-Strategiespiel — 10 Runden, Stapel- und Schlagmechanik. Gegen KI oder Multiplayer, Classic, Puzzle, Blitz.",
+  applicationName: "Stack Tac Toe", /* Android/Xiaomi/Redmi: „Zum Startbildschirm hinzufügen“ */
   openGraph: {
     title: "Stack Tac Toe",
     description: "Taktisches Browser-Strategiespiel — 10 Runden, Stapel- und Schlagmechanik.",

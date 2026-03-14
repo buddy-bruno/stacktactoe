@@ -407,7 +407,31 @@
   background: var(--game-primary);
 }
 
-/* Spielbrett: nur 9 Kacheln sichtbar (Hintergrund/Rahmen für Test ausgeblendet) */
+/* Mobile/Android (Xiaomi/Redmi, Chrome): kein Pull-to-Refresh während Spiel, ruhiges Scrollen */
+html, body {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.page-shell-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Spielbrett & Dock: Touch für alle Geräte (iOS, Android, Xiaomi/Redmi, Edge, Safari) */
+.game-board-frame,
+.game-board-frame .cell,
+.dock-slot,
+.piece-dock .dock-slot,
+.mobile-dock,
+.mobile-dock .dock-slot {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.mobile-dock {
+  overscroll-behavior: none;
+}
 .game-board-frame {
   /* border: 1px solid rgba(255, 255, 255, 0.06); */
   /* background-image: var(--game-board-bg-modern); */

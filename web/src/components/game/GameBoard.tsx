@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PieceSvg } from './PieceSvg';
 import type { STT } from '@/lib/game/stt';
@@ -43,9 +43,9 @@ function PieceDockAside({
   );
 }
 
-type DragState = 
-  | { type: 'reserve'; size: PieceSize; fromPool: PoolSide; clientX: number; clientY: number }
-  | { type: 'board'; fromIndex: number; size: PieceSize; clientX: number; clientY: number };
+type DragState =
+  | { type: 'reserve'; size: PieceSize; fromPool: PoolSide; clientX: number; clientY: number; pointerId: number }
+  | { type: 'board'; fromIndex: number; size: PieceSize; clientX: number; clientY: number; pointerId: number };
 
 interface GameBoardProps {
   stt: STT;
@@ -77,10 +77,22 @@ interface GameBoardProps {
   poolMode?: boolean;
 }
 
+/** Erkennt zur Laufzeit, ob Pointer Events unterstützt werden (iOS <13, alte Android nutzen Touch-Fallback). */
+function usePointerEventsSupported(): boolean {
+  const [supported, setSupported] = useState(true);
+  useLayoutEffect(() => {
+    const value = typeof window !== 'undefined' && typeof window.PointerEvent === 'function';
+    const id = requestAnimationFrame(() => setSupported(value));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return supported;
+}
+
 export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell = null, lastUsedPieceSize = null, leftColumn, rightColumn, centerTop, opponentLabel = 'Gegner', leftScoreSlot, rightScoreSlot, billboardSlot, allowMovePieces, poolMode }: GameBoardProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hoverCell, setHoverCell] = useState<number | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
+  const usePointerEvents = usePointerEventsSupported();
   /** Ziehen vom Brett: wenn Eltern „Schach“ meldet ODER Engine erlaubt Bewegen (placementOnly=false und canMovePieces), dann erlauben – damit Bewegen auch nach Migration/URL-Fehler funktioniert. */
   const allowBoardDrag =
     allowMovePieces === true ||
@@ -95,8 +107,9 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     (drag?.type === 'board' && canMoveTo(hoverCell))
   );
 
-  const handlePointerUp = useCallback(() => {
-    if (!drag) return;
+  /** E: PointerEvent oder synthetisches { pointerId } für Touch/Mouse-Fallback. */
+  const handlePointerUp = useCallback((e: { pointerId: number }) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
     if (validDrop && hoverCell !== null) {
       if (drag.type === 'reserve') {
         onMove({ type: 'place', player: mySide, size: drag.size, index: hoverCell, fromPool: drag.fromPool }, hoverCell);
@@ -108,8 +121,9 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     setHoverCell(null);
   }, [drag, validDrop, hoverCell, onMove, mySide]);
 
-  const handlePointerMove = useCallback((e: PointerEvent) => {
-    if (!drag) return;
+  /** E: PointerEvent oder synthetisches { clientX, clientY, pointerId } für Touch/Mouse-Fallback. */
+  const handlePointerMove = useCallback((e: { clientX: number; clientY: number; pointerId: number }) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
     setDrag((d) => d ? { ...d, clientX: e.clientX, clientY: e.clientY } : null);
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const cell = el?.closest('[data-cell-index]');
@@ -125,18 +139,55 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     document.body.style.touchAction = 'none';
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
+    const pid = drag.pointerId;
+
+    if (usePointerEvents) {
+      window.addEventListener('pointermove', handlePointerMove as (e: PointerEvent) => void, { passive: true });
+      const onUp = (e: PointerEvent) => handlePointerUp(e);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+      return () => {
+        document.body.style.touchAction = prevTouchAction;
+        document.body.style.overflow = prevOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+        window.removeEventListener('pointermove', handlePointerMove as (e: PointerEvent) => void);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      const t = Array.from(e.touches).find((x) => x.identifier === pid);
+      if (t) {
+        e.preventDefault();
+        handlePointerMove({ clientX: t.clientX, clientY: t.clientY, pointerId: pid });
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      const t = Array.from(e.changedTouches).find((x) => x.identifier === pid);
+      if (t) handlePointerUp({ pointerId: pid });
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      handlePointerMove({ clientX: e.clientX, clientY: e.clientY, pointerId: pid });
+    };
+    const onMouseUp = () => handlePointerUp({ pointerId: pid });
+
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchEnd);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
     return () => {
       document.body.style.touchAction = prevTouchAction;
       document.body.style.overflow = prevOverflow;
       document.documentElement.style.overflow = prevHtmlOverflow;
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [drag, handlePointerMove, handlePointerUp]);
+  }, [drag, handlePointerMove, handlePointerUp, usePointerEvents]);
 
   const poolModeWithSides = poolMode && (stt.poolLeft != null && stt.poolRight != null);
   const pool = poolMode && !poolModeWithSides && stt.pool ? stt.pool : null;
@@ -150,13 +201,27 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     if (!myTurn || locked || stt.over || (poolMode ? stt.phase !== 'placement' : false) || cnt <= 0) return;
     if (!poolMode && stt.phase !== 'placement') return;
     e.preventDefault();
-    setDrag({ type: 'reserve', size, fromPool, clientX: e.clientX, clientY: e.clientY });
+    setDrag({ type: 'reserve', size, fromPool, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId });
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch { /* ältere Browser ignorieren */ }
+  };
+
+  const startDragReserveFromTouch = (size: PieceSize, fromPool: PoolSide, clientX: number, clientY: number, pointerId: number) => {
+    const cnt = poolModeWithSides ? reserveCount(size, fromPool) : reserveCount(size);
+    if (!myTurn || locked || stt.over || (poolMode ? stt.phase !== 'placement' : false) || cnt <= 0) return;
+    if (!poolMode && stt.phase !== 'placement') return;
+    setDrag({ type: 'reserve', size, fromPool, clientX, clientY, pointerId });
   };
 
   const startDragBoard = (fromIndex: number, size: PieceSize, e: React.PointerEvent) => {
     if (!myTurn || locked || stt.over || !allowBoardDrag || (stt.placementOnly || !stt.canMovePieces(mySide))) return;
     e.preventDefault();
-    setDrag({ type: 'board', fromIndex, size, clientX: e.clientX, clientY: e.clientY });
+    setDrag({ type: 'board', fromIndex, size, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId });
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch { /* ältere Browser ignorieren */ }
+  };
+
+  const startDragBoardFromTouch = (fromIndex: number, size: PieceSize, clientX: number, clientY: number, pointerId: number) => {
+    if (!myTurn || locked || stt.over || !allowBoardDrag || (stt.placementOnly || !stt.canMovePieces(mySide))) return;
+    setDrag({ type: 'board', fromIndex, size, clientX, clientY, pointerId });
   };
 
   const oppSide: Player = mySide === 'human' ? 'ai' : 'human';
@@ -169,7 +234,9 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
       <div
         key={side === 'left' ? size : `${size}-R`}
         className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 md:p-4 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${cnt <= 0 ? 'opacity-30' : ''}`}
-        onPointerDown={canUse ? (e) => startDragReserve(size, side, e) : undefined}
+        onPointerDown={usePointerEvents && canUse ? (e) => startDragReserve(size, side, e) : undefined}
+        onTouchStart={!usePointerEvents && canUse ? (e) => { e.preventDefault(); const t = e.touches[0]; if (t) startDragReserveFromTouch(size, side, t.clientX, t.clientY, t.identifier); } : undefined}
+        onMouseDown={!usePointerEvents && canUse ? (e) => { e.preventDefault(); startDragReserveFromTouch(size, side, e.clientX, e.clientY, 0); } : undefined}
       >
         <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
           <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size && (!poolModeWithSides || drag.fromPool === side) ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
@@ -195,7 +262,9 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
       <div
         key={size}
         className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${total <= 0 ? 'opacity-30' : ''}`}
-        onPointerDown={canUse ? (e) => startDragReserve(size, fromPool, e) : undefined}
+        onPointerDown={usePointerEvents && canUse ? (e) => startDragReserve(size, fromPool, e) : undefined}
+        onTouchStart={!usePointerEvents && canUse ? (e) => { e.preventDefault(); const t = e.touches[0]; if (t) startDragReserveFromTouch(size, fromPool, t.clientX, t.clientY, t.identifier); } : undefined}
+        onMouseDown={!usePointerEvents && canUse ? (e) => { e.preventDefault(); startDragReserveFromTouch(size, fromPool, e.clientX, e.clientY, 0); } : undefined}
       >
         <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
           <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
@@ -315,7 +384,9 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
                           bg-[var(--game-board-cell-bg)]
                           ${cellCanDrag ? 'cursor-grab active:cursor-grabbing' : ''}
                         `}
-                        onPointerDown={cellCanDrag ? (e) => startDragBoard(i, top!.size, e) : undefined}
+                        onPointerDown={usePointerEvents && cellCanDrag ? (e) => startDragBoard(i, top!.size, e) : undefined}
+                        onTouchStart={!usePointerEvents && cellCanDrag && top ? (e) => { e.preventDefault(); const t = e.touches[0]; if (t) startDragBoardFromTouch(i, top!.size, t.clientX, t.clientY, t.identifier); } : undefined}
+                        onMouseDown={!usePointerEvents && cellCanDrag && top ? (e) => { e.preventDefault(); startDragBoardFromTouch(i, top!.size, e.clientX, e.clientY, 0); } : undefined}
                       >
                         {top && (() => {
                           const canDrag = top.player === mySide && allowBoardDrag && (stt.placementOnly || stt.canMovePieces(mySide)) && myTurn && !locked && !stt.over;
@@ -330,7 +401,9 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
                                 ...pieceSizeStyle(top.size),
                                 filter: 'var(--game-fig-drop-shadow)',
                               }}
-                              onPointerDown={canDrag ? (e) => startDragBoard(i, top.size, e) : undefined}
+                              onPointerDown={usePointerEvents && canDrag ? (e) => startDragBoard(i, top.size, e) : undefined}
+                              onTouchStart={!usePointerEvents && canDrag ? (e) => { e.preventDefault(); const t = e.touches[0]; if (t) startDragBoardFromTouch(i, top.size, t.clientX, t.clientY, t.identifier); } : undefined}
+                              onMouseDown={!usePointerEvents && canDrag ? (e) => { e.preventDefault(); startDragBoardFromTouch(i, top.size, e.clientX, e.clientY, 0); } : undefined}
                             >
                               <div className={`w-full h-full flex items-center justify-center ${isAiJustPlaced ? 'animate-piece-drop-in' : ''}`}>
                                 <PieceSvg player={top.player} size={top.size} className="w-full h-full block" />
