@@ -1,5 +1,7 @@
 export { STT, serializeGameState, deserializeGameState } from './stt';
 export type { GameState, Move, Player, PieceSize } from './stt';
+export { getEngineConfig, applyMove, getLegalMoves, createState, migrateToSchach } from './engine';
+export type { GameVariant, EngineConfig } from './engine';
 export { AI } from './ai';
 export type { Difficulty } from './ai';
 export { ROUNDS_TOTAL } from './match-state';

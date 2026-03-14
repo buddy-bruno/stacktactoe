@@ -55,7 +55,7 @@ export default function ProfilePage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.replace('/auth?redirect=/profile');
+        router.replace('/zugang?redirect=/profile');
         return;
       }
       setEmail(user.email ?? null);
@@ -72,7 +72,7 @@ export default function ProfilePage() {
       }
       setLoading(false);
     })().catch(() => {
-      router.replace('/auth?redirect=/profile');
+      router.replace('/zugang?redirect=/profile');
       setLoading(false);
     });
   }, [router]);
@@ -131,7 +131,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/" header={<AppHeader title="Profil" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
           <p className="text-game-text-muted">Lade…</p>
         </main>
@@ -142,7 +142,7 @@ export default function ProfilePage() {
   const displayName = profile?.display_name?.trim() || profile?.username || 'Spieler';
 
   return (
-    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/" header={<AppHeader title="Profil" showRanking showAuth />}>
       <main className="flex-1 flex flex-col items-center gap-8 py-12 pb-20">
         <h1 className="font-display text-2xl font-bold text-center text-game-text">
           Mein Profil

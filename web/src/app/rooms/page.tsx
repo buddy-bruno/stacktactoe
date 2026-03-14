@@ -30,11 +30,11 @@ export default function RoomsPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
-        router.replace('/auth?redirect=/rooms');
+        router.replace('/zugang?redirect=/rooms');
         return;
       }
       setUserId(data.user.id);
-    }).catch(() => router.replace('/auth?redirect=/rooms'));
+    }).catch(() => router.replace('/zugang?redirect=/rooms'));
   }, [router]);
 
   useEffect(() => {
@@ -111,7 +111,7 @@ export default function RoomsPage() {
 
   if (!userId) {
     return (
-      <PageShell backHref="/lobby" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/lobby" header={<AppHeader title="Räume" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center py-12">
           <p className="text-game-text-muted">Lade…</p>
         </main>
@@ -120,7 +120,7 @@ export default function RoomsPage() {
   }
 
   return (
-    <PageShell backHref="/lobby" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/lobby" header={<AppHeader title="Räume" showRanking showAuth />}>
       <main className="flex-1 flex flex-col gap-6 py-8 pb-20 max-w-2xl mx-auto w-full px-4">
         <h1 className="font-display text-2xl font-bold text-game-text">Räume</h1>
 

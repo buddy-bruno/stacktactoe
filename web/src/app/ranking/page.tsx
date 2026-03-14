@@ -135,7 +135,7 @@ export default function RankingPage() {
   }
 
   return (
-    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/" header={<AppHeader title="Rangliste" showRanking showAuth />}>
       <main className="flex-1 flex flex-col items-center justify-center gap-8 py-12 pb-20">
         <h1 className="font-display text-2xl font-bold text-center text-game-text">
           Rangliste

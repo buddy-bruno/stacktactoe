@@ -30,6 +30,8 @@ npm run lint
 
 ## Schritt 3: Datenbank-Schema in Supabase ausführen
 
+**Hinweis:** Das aktuelle Schema (`stacktactoe-database.sql`) reicht für alle Features (Classic, Schach, Blitz, PvP, Daily, Puzzle, Räume, Turniere). Spielmodus (classic/schach/blitz) wird über URL und in `state_json` abgebildet — **keine zusätzlichen Spalten nötig**.
+
 1. Im Supabase-Dashboard links **SQL Editor** öffnen.
 2. **New query** klicken.
 3. Die Datei **`stacktactoe-database.sql`** (im Root deines Projekts) in einem Editor öffnen und **kompletten Inhalt** kopieren.

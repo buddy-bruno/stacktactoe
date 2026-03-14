@@ -8,7 +8,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
-import { STT } from '@/lib/game/stt';
+import { createState } from '@/lib/game/engine';
 import { serializeMatchState } from '@/lib/game/scoring';
 
 type Tournament = { id: string; name: string; status: string; max_participants: number; created_by: string | null };
@@ -58,11 +58,11 @@ export default function TournamentDetailPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
-        router.replace('/auth?redirect=/tournament/' + id);
+        router.replace('/zugang?redirect=/tournament/' + id);
         return;
       }
       setUserId(data.user.id);
-    }).catch(() => router.replace('/auth?redirect=/tournament/' + id));
+    }).catch(() => router.replace('/zugang?redirect=/tournament/' + id));
   }, [id, router]);
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export default function TournamentDetailPage() {
   async function startMatch(matchId: string, player1Id: string | null, player2Id: string | null) {
     if (!userId || !player1Id || !player2Id) return;
     setStartingMatchId(matchId);
-    const stt = new STT();
+    const stt = createState('classic');
     const sc = { human: { total: 0, wins: 0, moves: 0, rnd: 0 }, ai: { total: 0, wins: 0, moves: 0, rnd: 0 } };
     const stateJson = serializeMatchState(stt, 1, [], sc);
     const { data: game, error: insertErr } = await supabase.from('games').insert({
@@ -147,12 +147,12 @@ export default function TournamentDetailPage() {
     }
     await supabase.from('tournament_matches').update({ game_id: game.id, status: 'active' }).eq('id', matchId);
     setStartingMatchId(null);
-    router.push('/game?mode=pvp&id=' + game.id);
+    router.push('/game/classic?mode=pvp&id=' + game.id);
   }
 
   if (!userId) {
     return (
-      <PageShell backHref="/tournaments" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/tournaments" header={<AppHeader title="Turnier" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center py-12"><p className="text-game-text-muted">Lade…</p></main>
       </PageShell>
     );
@@ -160,7 +160,7 @@ export default function TournamentDetailPage() {
 
   if (loading || !tournament) {
     return (
-      <PageShell backHref="/tournaments" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/tournaments" header={<AppHeader title="Turnier" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center py-12">
           <p className="text-game-text-muted">{tournament === null && !loading ? 'Turnier nicht gefunden.' : 'Lade…'}</p>
           {tournament === null && !loading && <Link href="/tournaments"><Button variant="outline" className="mt-4 border-game-border text-game-text">Zu den Turnieren</Button></Link>}
@@ -176,7 +176,7 @@ export default function TournamentDetailPage() {
   }, {});
 
   return (
-    <PageShell backHref="/tournaments" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/tournaments" header={<AppHeader title="Turnier" showRanking showAuth />}>
       <main className="flex-1 flex flex-col gap-6 py-8 pb-20 max-w-2xl mx-auto w-full px-4">
         <h1 className="font-display text-2xl font-bold text-game-text">{tournament.name}</h1>
 
@@ -238,7 +238,7 @@ export default function TournamentDetailPage() {
                             <span className="text-game-text">{p1Name} vs {p2Name}</span>
                             <div className="flex gap-1">
                               {hasWinner && <span className="text-game-success">Sieger</span>}
-                              {m.game_id && !hasWinner && <Link href={'/game?mode=pvp&id=' + m.game_id}><Button variant="outline" size="sm" className="border-game-border text-game-text">Zum Spiel</Button></Link>}
+                              {m.game_id && !hasWinner && <Link href={'/game/classic?mode=pvp&id=' + m.game_id}><Button variant="outline" size="sm" className="border-game-border text-game-text">Zum Spiel</Button></Link>}
                               {canStart && (
                                 <Button size="sm" className="bg-game-primary/20 text-game-primary border-game-primary/30" onClick={() => void startMatch(m.id, m.player1_id ?? null, m.player2_id ?? null)} disabled={startingMatchId === m.id}>
                                   {startingMatchId === m.id ? '…' : 'Spiel starten'}

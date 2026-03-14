@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
@@ -94,9 +93,7 @@ export function NavSidebar({ open, onClose }: NavSidebarProps) {
         onTransitionEnd={handleTransitionEnd}
       >
         <div className="flex items-center justify-between p-4 max-[1024px]:py-2.5 max-[1024px]:px-3 border-b border-game-border shrink-0 rounded-[11px] rounded-b-none backdrop-blur-2xl bg-game-surface/90">
-          <Link href="/" onClick={handleLink} className="shrink-0 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-game-primary rounded-lg" aria-label="StackTacToe Startseite">
-            <Image src="/stacktactoe-logo.png" alt="StackTacToe" width={220} height={40} className="h-8 w-auto" />
-          </Link>
+          <span className="text-sm sm:text-base font-semibold text-game-text">Menü</span>
           <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0 text-game-text hover:bg-game-surface-hover" aria-label="Schließen">
             <span aria-hidden>✕</span>
           </Button>
@@ -123,17 +120,17 @@ export function NavSidebar({ open, onClose }: NavSidebarProps) {
               <span className="text-lg shrink-0" aria-hidden>👤</span>
               <span>Mein Konto</span>
             </Link>
-            <a href="#" onClick={handleLink} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-game-text hover:bg-game-surface-hover hover:text-game-primary transition-colors">
+            <Link href="/kontakt" onClick={handleLink} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-game-text hover:bg-game-surface-hover hover:text-game-primary transition-colors">
               <span className="text-lg shrink-0" aria-hidden>❓</span>
               <span>Hilfe &amp; Kontakt</span>
-            </a>
+            </Link>
           </div>
 
           <div className="mt-auto pt-6 pb-4 border-t border-game-border space-y-4">
             {user === undefined ? (
               <div className="h-12 flex items-center justify-center text-game-text-muted text-sm">Lade…</div>
             ) : !user ? (
-              <Link href="/auth?redirect=/lobby" onClick={handleLink} className="block">
+              <Link href="/zugang?redirect=/lobby" onClick={handleLink} className="block">
                 <Button className="w-full h-9 rounded-lg text-sm bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
                   Anmelden / Registrieren
                 </Button>

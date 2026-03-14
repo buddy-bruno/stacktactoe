@@ -22,7 +22,9 @@ export default function PuzzlePlayPage() {
   const [solved, setSolved] = useState<boolean | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     getPuzzle(id).then((p) => {
+      if (cancelled) return;
       setPuzzle(p);
       if (p?.initial_state) {
         const g = deserializeGameState(p.initial_state as Parameters<typeof deserializeGameState>[0]);
@@ -30,6 +32,7 @@ export default function PuzzlePlayPage() {
       }
       setLoading(false);
     });
+    return () => { cancelled = true; };
   }, [id]);
 
   const onMove = useCallback(
@@ -50,7 +53,7 @@ export default function PuzzlePlayPage() {
 
   if (loading || !puzzle) {
     return (
-      <PageShell backHref="/puzzle" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/puzzle" header={<AppHeader title="Puzzle" showRanking showAuth />}>
         <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
           <p className="text-game-text-muted text-center py-8">Lade Puzzle…</p>
         </div>
@@ -60,7 +63,7 @@ export default function PuzzlePlayPage() {
 
   if (!stt) {
     return (
-      <PageShell backHref="/puzzle" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/puzzle" header={<AppHeader title="Puzzle" showRanking showAuth />}>
         <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
           <div className="flex flex-col items-center justify-center gap-4 py-12">
             <p className="text-game-text-muted">Ungültige Puzzle-Daten.</p>
@@ -72,7 +75,7 @@ export default function PuzzlePlayPage() {
   }
 
   return (
-    <PageShell backHref="/puzzle" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/puzzle" header={<AppHeader title="Puzzle" showRanking showAuth />}>
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-4">
         <Card>
           <CardHeader>

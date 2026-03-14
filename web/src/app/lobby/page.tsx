@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
-import { STT } from '@/lib/game/stt';
+import { createState } from '@/lib/game/engine';
 import { serializeMatchState } from '@/lib/game/scoring';
 
 const ROULETTE_SESSION_KEY = 'stacktactoe_roulette_session';
@@ -26,6 +26,8 @@ function LobbyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const joinFromUrl = searchParams.get('join')?.trim().toUpperCase() ?? '';
+  const variant = searchParams.get('variant') || 'classic';
+  const gamePath = variant === 'schach' ? '/game/schach' : '/game/classic';
   const [inviteCode, setInviteCode] = useState('');
   const [matchmaking, setMatchmaking] = useState<'idle' | 'searching' | 'matched'>('idle');
   const [error, setError] = useState('');
@@ -48,11 +50,11 @@ function LobbyContent() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
-        router.replace('/auth?redirect=/lobby');
+        router.replace('/zugang?redirect=/lobby');
         return;
       }
       setAuthReady(true);
-    }).catch(() => router.replace('/auth?redirect=/lobby'));
+    }).catch(() => router.replace('/zugang?redirect=/lobby'));
   }, [router]);
 
   const leaveQueue = useCallback(async () => {
@@ -93,9 +95,9 @@ function LobbyContent() {
       setMatchmaking('matched');
       setSearchingUserId(null);
       const q = rouletteSessionRef.current ? '&roulette=1' : '';
-      router.push(`/game?mode=pvp&id=${gameId}${q}`);
+      router.push(`${gamePath}?mode=pvp&id=${gameId}${q}`);
     }
-  }, [router]);
+  }, [router, gamePath]);
 
   // Realtime: wenn wir in "searching" sind, auf neues aktives Spiel warten (wir als player1 oder player2)
   useEffect(() => {
@@ -109,7 +111,7 @@ function LobbyContent() {
           if (payload?.new?.status === 'active') {
             leaveQueue();
             const q = rouletteSessionRef.current ? '&roulette=1' : '';
-            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+            router.push(gamePath + '?mode=pvp&id=' + payload.new.id + q);
           }
         }
       )
@@ -120,7 +122,7 @@ function LobbyContent() {
           if (payload?.new?.status === 'active') {
             leaveQueue();
             const q = rouletteSessionRef.current ? '&roulette=1' : '';
-            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+            router.push(gamePath + '?mode=pvp&id=' + payload.new.id + q);
           }
         }
       )
@@ -131,7 +133,7 @@ function LobbyContent() {
           if (payload?.new?.status === 'active') {
             leaveQueue();
             const q = rouletteSessionRef.current ? '&roulette=1' : '';
-            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+            router.push(gamePath + '?mode=pvp&id=' + payload.new.id + q);
           }
         }
       )
@@ -142,7 +144,7 @@ function LobbyContent() {
           if (payload?.new?.status === 'active') {
             leaveQueue();
             const q = rouletteSessionRef.current ? '&roulette=1' : '';
-            router.push('/game?mode=pvp&id=' + payload.new.id + q);
+            router.push(gamePath + '?mode=pvp&id=' + payload.new.id + q);
           }
         }
       )
@@ -152,7 +154,7 @@ function LobbyContent() {
       supabase.removeChannel(channel);
       matchmakingChannelRef.current = null;
     };
-  }, [matchmaking, searchingUserId, router, leaveQueue]);
+  }, [matchmaking, searchingUserId, router, leaveQueue, gamePath]);
 
   // Beim Verlassen der Lobby aus der Queue austragen
   useEffect(() => {
@@ -208,7 +210,7 @@ function LobbyContent() {
     }
     setCreating(true);
     const code = generateInviteCode();
-    const stt = new STT();
+    const stt = createState(variant as 'classic' | 'schach');
     const sc = { human: { total: 0, wins: 0, moves: 0, rnd: 0 }, ai: { total: 0, wins: 0, moves: 0, rnd: 0 } };
     const stateJson = serializeMatchState(stt, 1, [], sc);
     const { data, error: err } = await supabase
@@ -269,7 +271,7 @@ function LobbyContent() {
       setError('Beitreten fehlgeschlagen: ' + updErr.message);
       return;
     }
-    router.push(`/game?mode=pvp&id=${game.id}`);
+    router.push(`${gamePath}?mode=pvp&id=${game.id}`);
   }
 
   function startRoulette() {
@@ -289,7 +291,7 @@ function LobbyContent() {
 
   if (!authReady) {
     return (
-      <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/" header={<AppHeader title="Lobby" showRanking showAuth />}>
         <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
           <p className="text-game-text-muted text-center py-8">Lade…</p>
         </div>
@@ -298,7 +300,7 @@ function LobbyContent() {
   }
 
   return (
-    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/" header={<AppHeader title="Lobby" showRanking showAuth />}>
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
         <Card className="border-game-accent/20">
           <CardHeader>
@@ -431,6 +433,7 @@ function LobbyContent() {
             <CardHeader>
               <CardTitle className="font-display text-game-text">Neue Partie erstellen</CardTitle>
               <CardDescription className="text-game-text-muted">
+                {variant === 'schach' ? 'Modus Schach (Platzieren + Bewegen). ' : ''}
                 Erstelle ein Spiel und teile den Einladungscode mit deinem Gegner.
               </CardDescription>
             </CardHeader>
@@ -453,7 +456,7 @@ function LobbyContent() {
                       >
                         {copyFeedback ? '✓ Kopiert!' : 'Link kopieren'}
                       </Button>
-                      <Link href={`/game?mode=pvp&id=${createdGame.gameId}`}>
+                      <Link href={`${gamePath}?mode=pvp&id=${createdGame.gameId}`}>
                         <Button variant="outline" className="border-game-border text-game-text hover:bg-game-surface-hover hover:text-game-text">
                           Zum Spiel
                         </Button>
@@ -518,7 +521,7 @@ function LobbyContent() {
 export default function LobbyPage() {
   return (
     <Suspense fallback={
-      <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/" header={<AppHeader title="Lobby" showRanking showAuth />}>
         <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
           <p className="text-game-text-muted text-center py-8">Lade…</p>
         </div>

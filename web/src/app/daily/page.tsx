@@ -38,7 +38,7 @@ export default function DailyPage() {
   }, [today]);
 
   return (
-    <PageShell backHref="/" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/" header={<AppHeader title="Daily" showRanking showAuth />}>
       <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
         {isLoggedIn === false && (
           <Card className="border-game-primary/30 bg-game-primary/5">
@@ -46,7 +46,7 @@ export default function DailyPage() {
               <p className="text-game-text text-sm mb-3">
                 Melde dich an, um dein Ergebnis zu speichern und in der Rangliste zu erscheinen.
               </p>
-              <Link href="/auth?redirect=/daily">
+              <Link href="/zugang?redirect=/daily">
                 <Button className="bg-game-primary/20 border-game-primary/30 text-game-primary hover:bg-game-primary/30">
                   Anmelden
                 </Button>
@@ -75,7 +75,7 @@ export default function DailyPage() {
                   </p>
               </div>
             )}
-            <Link href={`/game?mode=daily${myScore ? '&played=1' : ''}`}>
+            <Link href={`/game/classic?mode=daily${myScore ? '&played=1' : ''}`}>
               <Button className="w-full bg-game-accent/20 border-game-accent/30 text-game-accent hover:bg-game-accent/30">
                 {myScore ? 'Nochmal spielen (ersetzt bei besserem Ergebnis)' : 'Jetzt spielen'}
               </Button>

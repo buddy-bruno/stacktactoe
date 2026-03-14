@@ -11,11 +11,14 @@ import { headerInnerClass } from './navStyles';
 interface AppHeaderProps {
   showRanking?: boolean;
   showAuth?: boolean;
+  /** Links im Header, z. B. "Classic", "Schach", "Lobby" */
+  title?: React.ReactNode;
   rightSlot?: React.ReactNode;
   className?: string;
 }
 
 export function AppHeader({
+  title,
   rightSlot,
   className,
 }: AppHeaderProps) {
@@ -30,12 +33,20 @@ export function AppHeader({
           className
         )}
       >
-        <div className={cn('flex items-center justify-between p-4 max-lg:py-2.5 max-lg:px-3', headerInnerClass)}>
-          <Link href="/" className="shrink-0 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-game-primary rounded-lg" aria-label="StackTacToe Startseite">
+        <div className={cn('grid grid-cols-[1fr_auto_1fr] items-center gap-2 p-4 max-lg:py-2.5 max-lg:px-3', headerInnerClass)}>
+          <div className="min-w-0 flex items-center justify-start">
+            {title != null ? (
+              <span className="text-sm sm:text-base font-semibold text-game-text truncate" aria-hidden>
+                {title}
+              </span>
+            ) : (
+              <span className="w-0 overflow-hidden" aria-hidden />
+            )}
+          </div>
+          <Link href="/" className="shrink-0 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-game-primary rounded-lg" aria-label="StackTacToe Startseite">
             <Image src="/stacktactoe-logo.png" alt="StackTacToe" width={220} height={40} className="h-8 w-auto" priority />
           </Link>
-          <div className="flex-1 min-w-4" aria-hidden />
-          <div className="flex items-center gap-2">
+          <div className="min-w-0 flex items-center justify-end gap-2">
             {rightSlot}
             <button
               type="button"

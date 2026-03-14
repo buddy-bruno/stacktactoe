@@ -69,6 +69,7 @@
   --color-game-warning: var(--game-warning);
   --color-game-mode-ai: var(--game-mode-ai);
   --color-game-mode-pvp: var(--game-mode-pvp);
+  --color-game-mode-schach: var(--game-mode-schach);
   --color-game-mode-daily: var(--game-mode-daily);
   --color-game-mode-puzzle: var(--game-mode-puzzle);
   --color-game-mode-blitz: var(--game-mode-blitz);
@@ -123,6 +124,9 @@
   --game-header-margin: 0.5rem;
   --game-header-inner: 4rem;
   --game-header-height: calc(var(--game-header-margin) + var(--game-header-inner) + 0.125rem);
+  --game-footer-margin: 0.5rem;
+  --game-footer-inner: 3.5rem;
+  --game-footer-height: calc(var(--game-footer-margin) + var(--game-footer-inner) + 0.125rem);
   /* Desktop: kein Bottom-Dock im Flow → Reserve 0; Mobile überschreibt in Media Query */
   --game-dock-reserve-height: 0px;
   --game-billboard-height: 5.5rem;
@@ -188,6 +192,7 @@
   --game-warning: var(--game-accent);
   --game-mode-ai: var(--game-secondary);
   --game-mode-pvp: var(--game-primary);
+  --game-mode-schach: var(--game-primary);
   --game-mode-daily: var(--game-accent);
   --game-mode-puzzle: var(--game-success);
   --game-mode-blitz: var(--game-danger);

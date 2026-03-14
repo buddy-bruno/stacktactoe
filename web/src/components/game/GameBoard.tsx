@@ -72,12 +72,19 @@ interface GameBoardProps {
   rightScoreSlot?: React.ReactNode;
   /** Desktop: Runde/Status oben in der Mitte (Figurenleisten reichen dann bis oben) */
   billboardSlot?: React.ReactNode;
+  /** Schach-Modus: true = Ziehen vom Brett erlauben (strikt getrennt von Classic). Fehlt/undefined = nur aus stt.placementOnly (z. B. PvP/Puzzle). */
+  allowMovePieces?: boolean;
 }
 
-export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, lastUsedPieceSize = null, leftColumn, rightColumn, centerTop, opponentLabel = 'Gegner', leftScoreSlot, rightScoreSlot, billboardSlot }: GameBoardProps) {
+export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell = null, lastUsedPieceSize = null, leftColumn, rightColumn, centerTop, opponentLabel = 'Gegner', leftScoreSlot, rightScoreSlot, billboardSlot, allowMovePieces }: GameBoardProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hoverCell, setHoverCell] = useState<number | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
+  /** Ziehen vom Brett: wenn Eltern „Schach“ meldet ODER Engine erlaubt Bewegen (placementOnly=false und canMovePieces), dann erlauben – damit Bewegen auch nach Migration/URL-Fehler funktioniert. */
+  const allowBoardDrag =
+    allowMovePieces === true ||
+    (allowMovePieces === undefined && !stt.placementOnly) ||
+    (!stt.placementOnly && stt.canMovePieces(mySide));
 
   const canPlace = useCallback((idx: number) => drag?.type === 'reserve' && stt.canPlace(mySide, drag.size, idx), [drag, stt, mySide]);
   const canMoveTo = useCallback((idx: number) => drag?.type === 'board' && drag.fromIndex !== idx && stt.canMove(mySide, drag.fromIndex, idx), [drag, stt, mySide]);
@@ -131,13 +138,13 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
   }, [drag, handlePointerMove, handlePointerUp]);
 
   const startDragReserve = (size: PieceSize, e: React.PointerEvent) => {
-    if (!myTurn || stt.over || stt.phase !== 'placement' || stt.res[mySide][size] <= 0) return;
+    if (!myTurn || locked || stt.over || stt.phase !== 'placement' || stt.res[mySide][size] <= 0) return;
     e.preventDefault();
     setDrag({ type: 'reserve', size, clientX: e.clientX, clientY: e.clientY });
   };
 
   const startDragBoard = (fromIndex: number, size: PieceSize, e: React.PointerEvent) => {
-    if (!myTurn || stt.over || stt.phase !== 'movement') return;
+    if (!myTurn || locked || stt.over || !allowBoardDrag || (stt.placementOnly || !stt.canMovePieces(mySide))) return;
     e.preventDefault();
     setDrag({ type: 'board', fromIndex, size, clientX: e.clientX, clientY: e.clientY });
   };
@@ -148,7 +155,8 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
       <div className="grid grid-cols-3 md:grid-cols-1 gap-3 sm:gap-4 md:gap-5 w-full max-md:max-w-none max-w-2xl md:max-w-none">
         {(['small', 'medium', 'large'] as const).map((size) => {
           const cnt = stt.res[mySide][size];
-          const canUse = cnt > 0 && stt.phase === 'placement' && myTurn && !stt.over;
+          /** Classic: nur in Placement-Phase setzen. Schach: setzen erlauben, solange Vorrat da (pro Zug Setzen ODER Bewegen, §5 SPIELMODI-SCHACH). */
+          const canUse = cnt > 0 && (stt.placementOnly ? stt.phase === 'placement' : true) && myTurn && !stt.over;
           return (
             <div
               key={size}
@@ -239,11 +247,12 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
                 >
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => {
                     const stack = stt.board[i] ?? [];
-                    const vis = stack.slice(-3);
+                    const top = stack.length ? stack[stack.length - 1]! : null;
                     const isWin = stt.wl?.includes(i);
                     const hot = hoverCell === i;
                     const valid = drag && (canPlace(i) || canMoveTo(i));
                     const invalid = hot && drag && !valid;
+                    const cellCanDrag = top && top.player === mySide && allowBoardDrag && (stt.placementOnly || stt.canMovePieces(mySide)) && myTurn && !locked && !stt.over;
                     return (
                       <div
                         key={i}
@@ -255,33 +264,31 @@ export function GameBoard({ stt, mySide, myTurn, onMove, lastPlacedCell = null, 
                           ${invalid ? ' border-game-danger/30' : ''}
                           border border-game-border-soft-subtle shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]
                           bg-[var(--game-board-cell-bg)]
+                          ${cellCanDrag ? 'cursor-grab active:cursor-grabbing' : ''}
                         `}
+                        onPointerDown={cellCanDrag ? (e) => startDragBoard(i, top!.size, e) : undefined}
                       >
-                        {vis.map((p, idx) => {
-                          const isTop = idx === vis.length - 1;
-                          const canDrag = isTop && p.player === mySide && stt.phase === 'movement' && myTurn && !stt.over;
-                          const layer = isTop ? '' : ` opacity-30 scale-90`;
-                          const xOff = isTop ? 0 : -5 + idx * 4;
-                          const yOff = -idx * 20;
-                          const isAiJustPlaced = isTop && lastPlacedCell === i && p.player === 'ai';
+                        {top && (() => {
+                          const canDrag = top.player === mySide && allowBoardDrag && (stt.placementOnly || stt.canMovePieces(mySide)) && myTurn && !locked && !stt.over;
+                          const isAiJustPlaced = lastPlacedCell === i && top.player === 'ai';
+                          const isDraggingFromHere = drag?.type === 'board' && drag.fromIndex === i;
                           return (
                             <div
-                              key={idx}
-                              className={`absolute flex items-center justify-center left-1/2 top-1/2 pointer-events-none ${canDrag ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : ''} ${layer}`}
+                              className={`absolute flex items-center justify-center left-1/2 top-1/2 pointer-events-none ${canDrag ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : ''} ${isDraggingFromHere ? 'opacity-10' : ''}`}
                               style={{
-                                transform: `translate(calc(-50% + ${xOff}px), calc(-50% + ${yOff}px))`,
-                                zIndex: 5 + idx,
-                                ...pieceSizeStyle(p.size),
+                                transform: 'translate(-50%, -50%)',
+                                zIndex: 5,
+                                ...pieceSizeStyle(top.size),
                                 filter: 'var(--game-fig-drop-shadow)',
                               }}
-                              onPointerDown={canDrag ? (e) => startDragBoard(i, p.size, e) : undefined}
+                              onPointerDown={canDrag ? (e) => startDragBoard(i, top.size, e) : undefined}
                             >
                               <div className={`w-full h-full flex items-center justify-center ${isAiJustPlaced ? 'animate-piece-drop-in' : ''}`}>
-                                <PieceSvg player={p.player} size={p.size} className="w-full h-full block" />
+                                <PieceSvg player={top.player} size={top.size} className="w-full h-full block" />
                               </div>
                             </div>
                           );
-                        })}
+                        })()}
                       </div>
                     );
                   })}

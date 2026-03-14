@@ -2,38 +2,46 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-const BLITZ_SEC = 10;
+/** Blitz: Sekunden pro Zug (einheitlich für Spieler und KI). */
+export const BLITZ_SEC = 5;
 
 export function BlitzTimer({ active, onTimeout }: { active: boolean; onTimeout?: () => void }) {
   const [sec, setSec] = useState(BLITZ_SEC);
-  const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onTimeoutRef = useRef(onTimeout);
+  onTimeoutRef.current = onTimeout;
+  const prevActiveRef = useRef(active);
 
   useEffect(() => {
     if (!active) {
-      if (ref.current) clearInterval(ref.current);
-      const t = setTimeout(() => setSec(BLITZ_SEC), 0);
-      return () => clearTimeout(t);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      if (prevActiveRef.current) setSec(BLITZ_SEC);
+      prevActiveRef.current = false;
+      return () => {};
     }
-    const t = setTimeout(() => setSec(BLITZ_SEC), 0);
-    ref.current = setInterval(() => {
+    prevActiveRef.current = true;
+    setSec(BLITZ_SEC);
+    intervalRef.current = setInterval(() => {
       setSec((s) => {
         if (s <= 1) {
-          if (ref.current) clearInterval(ref.current);
-          onTimeout?.();
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          const fn = onTimeoutRef.current;
+          if (fn) setTimeout(fn, 0);
           return 0;
         }
         return s - 1;
       });
     }, 1000);
     return () => {
-      clearTimeout(t);
-      if (ref.current) clearInterval(ref.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
     };
-  }, [active, onTimeout]);
+  }, [active]);
 
-  if (!active) return null;
   return (
-    <div className={`font-display font-bold text-sm px-3 py-1.5 rounded-lg border ${sec <= 3 ? 'border-game-danger/50 text-game-danger animate-pulse' : 'border-game-accent/30 text-game-accent'}`}>
+    <div className={`font-display font-bold text-sm px-3 py-1.5 rounded-lg border ${active && sec <= 3 ? 'border-game-danger/50 text-game-danger animate-pulse' : 'border-game-accent/30 text-game-accent'}`}>
       ⏱ {sec}s
     </div>
   );

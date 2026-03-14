@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ReactNode } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AppFooter } from '@/components/layout/AppFooter';
 
 interface PageShellProps {
   children: ReactNode;
@@ -34,11 +35,14 @@ export function PageShell({ children, className = '', backHref, header }: PageSh
   if (header) {
     return (
       <div className={`min-h-screen flex flex-col bg-game-bg text-game-text ${className}`}>
+        {/* Einheitlicher Header wie Spielmodi: gleiche Breite, Abstände, Stil */}
         <div
           className="fixed top-0 left-0 right-0 z-50 flex justify-center"
           style={{
-            margin: 'var(--game-header-margin)',
+            marginTop: 'var(--game-header-margin)',
             marginBottom: 0,
+            marginLeft: 0,
+            marginRight: 0,
             background: 'var(--game-bg)',
           }}
         >
@@ -53,23 +57,27 @@ export function PageShell({ children, className = '', backHref, header }: PageSh
           aria-hidden
         />
         <div
-          className="relative z-10 flex-1 min-h-0 overflow-auto pt-[var(--game-header-height)] page-shell-scroll"
+          className="relative z-10 flex-1 min-h-0 overflow-auto pt-[var(--game-header-height)] pb-[var(--game-footer-height)] page-shell-scroll"
           style={{ minHeight: 0 }}
         >
           {content}
         </div>
+        <AppFooter />
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen bg-game-bg text-game-text ${className}`}>
+    <div className={`min-h-screen flex flex-col bg-game-bg text-game-text ${className}`}>
       <div
         className="fixed inset-0 pointer-events-none"
         style={{ background: 'var(--game-bg-vignette)' }}
         aria-hidden
       />
-      {content}
+      <div className="relative z-10 flex-1 min-h-0 overflow-auto pb-[var(--game-footer-height)]">
+        {content}
+      </div>
+      <AppFooter />
     </div>
   );
 }

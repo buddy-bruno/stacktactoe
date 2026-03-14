@@ -8,7 +8,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
-import { STT } from '@/lib/game/stt';
+import { createState } from '@/lib/game/engine';
 import { serializeMatchState } from '@/lib/game/scoring';
 
 type Room = { id: string; name: string; invite_code: string | null; created_by: string | null };
@@ -36,11 +36,11 @@ export default function RoomDetailPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
-        router.replace('/auth?redirect=/room/' + id);
+        router.replace('/zugang?redirect=/room/' + id);
         return;
       }
       setUserId(data.user.id);
-    }).catch(() => router.replace('/auth?redirect=/room/' + id));
+    }).catch(() => router.replace('/zugang?redirect=/room/' + id));
   }, [id, router]);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export default function RoomDetailPage() {
     if (!room || !userId) return;
     setCreating(true);
     const code = generateInviteCode();
-    const stt = new STT();
+    const stt = createState('classic');
     const sc = { human: { total: 0, wins: 0, moves: 0, rnd: 0 }, ai: { total: 0, wins: 0, moves: 0, rnd: 0 } };
     const stateJson = serializeMatchState(stt, 1, [], sc);
     const { data, error: err } = await supabase.from('games').insert({
@@ -109,7 +109,7 @@ export default function RoomDetailPage() {
       setError(err.message);
       return;
     }
-    if (data) router.push('/game?mode=pvp&id=' + data.id);
+    if (data) router.push('/game/classic?mode=pvp&id=' + data.id);
   }
 
   async function joinGame(gameId: string) {
@@ -124,12 +124,12 @@ export default function RoomDetailPage() {
     const { error: updErr } = await supabase.from('games').update({ player2_id: userId, status: 'active' }).eq('id', gameId);
     setJoiningId(null);
     if (updErr) setError('Beitreten fehlgeschlagen.');
-    else router.push('/game?mode=pvp&id=' + gameId);
+    else router.push('/game/classic?mode=pvp&id=' + gameId);
   }
 
   if (!userId) {
     return (
-      <PageShell backHref="/rooms" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/rooms" header={<AppHeader title="Raum" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center py-12"><p className="text-game-text-muted">Lade…</p></main>
       </PageShell>
     );
@@ -137,7 +137,7 @@ export default function RoomDetailPage() {
 
   if (loading || !room) {
     return (
-      <PageShell backHref="/rooms" header={<AppHeader showRanking showAuth />}>
+      <PageShell backHref="/rooms" header={<AppHeader title="Raum" showRanking showAuth />}>
         <main className="flex-1 flex flex-col items-center justify-center py-12">
           <p className="text-game-text-muted">{room === null && !loading ? 'Raum nicht gefunden.' : 'Lade…'}</p>
           {room === null && !loading && (
@@ -151,7 +151,7 @@ export default function RoomDetailPage() {
   const inviteUrl = typeof window !== 'undefined' && room.invite_code ? `${window.location.origin}/lobby?join=${room.invite_code}` : '';
 
   return (
-    <PageShell backHref="/rooms" header={<AppHeader showRanking showAuth />}>
+    <PageShell backHref="/rooms" header={<AppHeader title="Raum" showRanking showAuth />}>
       <main className="flex-1 flex flex-col gap-6 py-8 pb-20 max-w-2xl mx-auto w-full px-4">
         <h1 className="font-display text-2xl font-bold text-game-text">{room.name}</h1>
 
@@ -210,7 +210,7 @@ export default function RoomDetailPage() {
                     <li key={g.id} className="flex items-center justify-between gap-2">
                       <span className="text-game-text-muted text-sm truncate">{g.invite_code ?? g.id.slice(0, 8)}</span>
                       {isMine ? (
-                        <Link href={'/game?mode=pvp&id=' + g.id}>
+                        <Link href={'/game/classic?mode=pvp&id=' + g.id}>
                           <Button variant="outline" size="sm" className="border-game-border text-game-text">Zum Spiel</Button>
                         </Link>
                       ) : (

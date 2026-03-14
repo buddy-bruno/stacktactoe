@@ -18,3 +18,5 @@ export interface MatchState extends GameState {
 }
 
 export const ROUNDS_TOTAL = 10;
+/** Siege nötig zum Matchgewinn („First to 5“). */
+export const WINS_TO_MATCH = 5;

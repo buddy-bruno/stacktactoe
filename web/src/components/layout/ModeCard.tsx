@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-export type GameModeKey = 'ai' | 'pvp' | 'daily' | 'puzzle' | 'blitz' | 'classic';
+export type GameModeKey = 'ai' | 'pvp' | 'daily' | 'puzzle' | 'blitz' | 'classic' | 'schach';
 
 const MODE_CONFIG: Record<GameModeKey, { icon: React.ReactNode; iconBox: string }> = {
   classic: {
@@ -31,6 +31,10 @@ const MODE_CONFIG: Record<GameModeKey, { icon: React.ReactNode; iconBox: string 
     icon: <span className="text-2xl leading-none" aria-hidden>⚡</span>,
     iconBox: 'bg-game-mode-blitz/10 border-game-mode-blitz/20 text-game-mode-blitz',
   },
+  schach: {
+    icon: <span className="text-2xl leading-none" aria-hidden>🎯</span>,
+    iconBox: 'bg-game-mode-schach/10 border-game-mode-schach/20 text-game-mode-schach',
+  },
 };
 
 interface ModeCardProps {
@@ -39,15 +43,15 @@ interface ModeCardProps {
   description: string;
   href: string;
   fullWidth?: boolean;
-  /** Badge oben rechts, z. B. "Coming soon" */
-  badge?: string;
   /** Karte nicht klickbar (z. B. Coming soon) */
   comingSoon?: boolean;
-  /** Icon-Box ausblenden (z. B. Play-Seite: Gegen KI ohne Icon) */
+  /** Icon-Box ausblenden */
   hideIcon?: boolean;
+  /** Klick auf Badge „Anleitung“ oben rechts → öffnet Sidebar für diesen Spielmodus */
+  onAnleitungClick?: () => void;
 }
 
-export function ModeCard({ mode, title, description, href, fullWidth, badge, comingSoon, hideIcon }: ModeCardProps) {
+export function ModeCard({ mode, title, description, href, fullWidth, comingSoon, hideIcon, onAnleitungClick }: ModeCardProps) {
   const config = MODE_CONFIG[mode];
   const wrapperClass = fullWidth ? 'sm:col-span-2' : '';
   const card = (
@@ -66,11 +70,19 @@ export function ModeCard({ mode, title, description, href, fullWidth, badge, com
         )}
         <CardTitle className="font-display text-game-text">{title}</CardTitle>
         <CardDescription className="text-game-text-muted text-base">{description}</CardDescription>
-        {badge && (
+        {onAnleitungClick && (
           <CardAction>
-            <span className="rounded-md bg-game-text-muted/20 px-2 py-0.5 text-xs font-medium text-game-text-muted">
-              {badge}
-            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAnleitungClick();
+              }}
+              className="rounded-lg border border-game-border bg-game-surface/80 px-2.5 py-1 text-xs font-medium text-game-text-muted hover:bg-game-surface hover:text-game-text transition-colors"
+            >
+              Anleitung
+            </button>
           </CardAction>
         )}
       </CardHeader>
