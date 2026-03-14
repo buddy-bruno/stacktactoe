@@ -26,11 +26,10 @@ function PieceDockAside({
   order: 1 | 3;
   scoreSlot?: React.ReactNode;
 }) {
-  const tintClass = variant === 'human' ? 'bg-game-primary/[0.03]' : 'bg-game-secondary/[0.03]';
   const borderClass = variant === 'human' ? 'border-r border-game-border' : 'border-l border-game-border';
   return (
     <aside className={`hidden md:flex flex-col w-52 xl:w-60 shrink-0 min-h-0 ${borderClass} ${order === 1 ? 'md:order-1' : 'md:order-3'}`} aria-label={title}>
-      <div className={`piece-dock flex flex-col gap-4 p-4 h-full min-h-0 overflow-auto ${tintClass}`}>
+      <div className="piece-dock flex flex-col gap-4 p-4 h-full min-h-0 overflow-auto">
         {scoreSlot != null ? (
           <div className="-mx-4 px-4 pb-5 border-b border-game-border">
             {scoreSlot}
@@ -185,11 +184,44 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     );
   };
 
+  /** Mobile: eine Leiste unten mit Gesamtmenge (Pool links + rechts). Beim Ziehen fromPool = links wenn vorhanden, sonst rechts. */
+  const mobilePoolSlot = (size: PieceSize) => {
+    if (!poolModeWithSides) return poolSlot(size, 'left');
+    const total = (stt.poolLeft![size] ?? 0) + (stt.poolRight![size] ?? 0);
+    const fromPool: PoolSide = (stt.poolLeft![size] ?? 0) > 0 ? 'left' : 'right';
+    const canUse = total > 0 && (stt.placementOnly ? stt.phase === 'placement' : true) && myTurn && !stt.over;
+    const justUsed = size === lastUsedPieceSize;
+    return (
+      <div
+        key={size}
+        className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${total <= 0 ? 'opacity-30' : ''}`}
+        onPointerDown={canUse ? (e) => startDragReserve(size, fromPool, e) : undefined}
+      >
+        <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
+          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
+            <PieceSvg player={mySide} size={size} variant="neutral" className="w-full h-full" />
+          </div>
+        </div>
+        <div className="dock-slot-labels flex flex-col max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
+          <span className="text-sm font-semibold text-game-text mt-2 max-md:mt-1">{SN[size]}</span>
+          <span className="font-display text-sm font-bold text-game-accent max-md:mt-0">×{total}</span>
+        </div>
+      </div>
+    );
+  };
+
   const dockSlots = (
       <div className="grid grid-cols-3 md:grid-cols-1 gap-3 sm:gap-4 md:gap-5 w-full max-md:max-w-none max-w-2xl md:max-w-none">
         {(['small', 'medium', 'large'] as const).map((size) => poolSlot(size, 'left'))}
       </div>
     );
+
+  /** Mobile unten: bei Pool mit Seiten = Gesamtmenge in einer Leiste; sonst = linke Leiste (dockSlots). */
+  const mobileDockContent = poolModeWithSides ? (
+    <div className="grid grid-cols-3 gap-3 w-full">
+      {(['small', 'medium', 'large'] as const).map((size) => mobilePoolSlot(size))}
+    </div>
+  ) : dockSlots;
 
   const opponentDockSlots = poolMode ? (
       <div className="grid grid-cols-3 md:grid-cols-1 gap-3 sm:gap-4 md:gap-5 w-full max-md:max-w-none max-w-2xl md:max-w-none">
@@ -323,11 +355,11 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
           </div>
         </div>
 
-        {/* Mobil: Figurenleiste unten im Rahmen (im Flow), volle Breite, border-top */}
+        {/* Mobil: Figurenleiste unten — bei Pool die ganze Menge (links+rechts) in einer Leiste */}
         <div className="md:hidden w-full flex justify-center pt-1 order-2 overflow-visible shrink-0 border-t border-game-border">
           <div className="w-full px-[var(--game-content-padding)] overflow-visible py-1.5" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}>
             <div className="mobile-dock w-full rounded-xl backdrop-blur-2xl bg-game-surface/90 p-1.5 flex justify-center overflow-visible">
-              {dockSlots}
+              {mobileDockContent}
             </div>
           </div>
         </div>
