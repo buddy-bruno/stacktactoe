@@ -244,19 +244,19 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     return (
       <div
         key={side === 'left' ? size : `${size}-R`}
-        className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 md:p-4 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${cnt <= 0 ? 'opacity-30' : ''}`}
+        className={`dock-slot flex flex-col items-center justify-center text-center gap-2 p-2 sm:p-3 md:p-4 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${cnt <= 0 ? 'opacity-30' : ''}`}
         onPointerDown={usePointerEvents && canUse ? (e) => startDragReserve(size, side, e) : undefined}
         onTouchStart={!usePointerEvents && canUse ? (e) => { e.preventDefault(); const t = e.touches[0]; if (t) startDragReserveFromTouch(size, side, t.clientX, t.clientY, t.identifier); } : undefined}
         onMouseDown={!usePointerEvents && canUse ? (e) => { e.preventDefault(); startDragReserveFromTouch(size, side, e.clientX, e.clientY, 0); } : undefined}
       >
-        <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
-          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size && (!poolModeWithSides || drag.fromPool === side) ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
+        <div className="dock-slot-figure relative w-16 flex items-end justify-center shrink-0" style={{ minHeight: 'var(--piece-large-h)' }}>
+          <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 ${drag?.type === 'reserve' && drag.size === size && (!poolModeWithSides || drag.fromPool === side) ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
             {(pool || poolModeWithSides) ? <PieceSvg player={mySide} size={size} variant="neutral" className="w-full h-full" /> : <PieceSvg player={side === 'left' ? mySide : oppSide} size={size} className="w-full h-full" />}
           </div>
         </div>
-        <div className="dock-slot-labels flex flex-col max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
-          <span className="text-sm font-semibold text-game-text mt-2 max-md:mt-1">{SN[size]}</span>
-          <span className="font-display text-sm font-bold text-game-accent max-md:mt-0">×{cnt}</span>
+        <div className="dock-slot-labels flex flex-col items-center gap-2 max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
+          <span className="text-sm font-semibold text-game-text">{SN[size]}</span>
+          <span className="font-display text-sm font-bold text-game-accent">×{cnt}</span>
         </div>
       </div>
     );
@@ -272,19 +272,19 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
     return (
       <div
         key={size}
-        className={`dock-slot flex flex-col items-center justify-center text-center p-2 sm:p-3 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${total <= 0 ? 'opacity-30' : ''}`}
+        className={`dock-slot flex flex-col items-center justify-center text-center gap-2 p-2 sm:p-3 rounded-xl transition-all min-w-0 ${canUse ? 'cursor-grab active:cursor-grabbing hover:bg-game-primary/5' : ''} ${total <= 0 ? 'opacity-30' : ''}`}
         onPointerDown={usePointerEvents && canUse ? (e) => startDragReserve(size, fromPool, e) : undefined}
         onTouchStart={!usePointerEvents && canUse ? (e) => { e.preventDefault(); const t = e.touches[0]; if (t) startDragReserveFromTouch(size, fromPool, t.clientX, t.clientY, t.identifier); } : undefined}
         onMouseDown={!usePointerEvents && canUse ? (e) => { e.preventDefault(); startDragReserveFromTouch(size, fromPool, e.clientX, e.clientY, 0); } : undefined}
       >
-        <div className="relative w-16 h-24 flex items-center justify-center dock-slot-figure">
-          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${drag?.type === 'reserve' && drag.size === size ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
+        <div className="dock-slot-figure relative w-16 flex items-end justify-center shrink-0" style={{ minHeight: 'var(--piece-large-h)' }}>
+          <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 ${drag?.type === 'reserve' && drag.size === size ? 'opacity-10' : ''} ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
             <PieceSvg player={mySide} size={size} variant="neutral" className="w-full h-full" />
           </div>
         </div>
-        <div className="dock-slot-labels flex flex-col max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
-          <span className="text-sm font-semibold text-game-text mt-2 max-md:mt-1">{SN[size]}</span>
-          <span className="font-display text-sm font-bold text-game-accent max-md:mt-0">×{total}</span>
+        <div className="dock-slot-labels flex flex-col items-center gap-2 max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:w-full max-md:min-w-0">
+          <span className="text-sm font-semibold text-game-text">{SN[size]}</span>
+          <span className="font-display text-sm font-bold text-game-accent">×{total}</span>
         </div>
       </div>
     );
@@ -315,15 +315,17 @@ export function GameBoard({ stt, mySide, myTurn, locked, onMove, lastPlacedCell 
           return (
             <div
               key={`${size}-${cnt}`}
-              className={`dock-slot flex flex-col items-center justify-center text-center p-3 sm:p-4 rounded-xl transition-all min-w-0 ${cnt <= 0 ? 'opacity-30' : ''}`}
+              className={`dock-slot flex flex-col items-center justify-center text-center gap-2 p-3 sm:p-4 rounded-xl transition-all min-w-0 ${cnt <= 0 ? 'opacity-30' : ''}`}
             >
-              <div className="relative w-16 h-24 flex items-center justify-center">
-                <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
+              <div className="dock-slot-figure relative w-16 flex items-end justify-center shrink-0" style={{ minHeight: 'var(--piece-large-h)' }}>
+                <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 ${justUsed ? 'animate-piece-from-dock' : ''}`} style={pieceSizeStyle(size)}>
                   <PieceSvg player={oppSide} size={size} className="w-full h-full" />
                 </div>
               </div>
-              <span className="text-sm font-semibold text-game-text mt-2">{SN[size]}</span>
-              <span className="font-display text-sm font-bold text-game-accent">×{cnt}</span>
+              <div className="dock-slot-labels flex flex-col items-center gap-2">
+                <span className="text-sm font-semibold text-game-text">{SN[size]}</span>
+                <span className="font-display text-sm font-bold text-game-accent">×{cnt}</span>
+              </div>
             </div>
           );
         })}
